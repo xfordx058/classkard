@@ -6,14 +6,16 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
 
-const GRADIENT_COLORS: [string, string] = ['#169B4C', '#22C55E'];
+const GRADIENT_COLORS: [string, string] = ['#128f45', '#2ecc71'];
 
 export default function AppHeader({
   title,
+  subtitle,
   showBack = true,
   right,
 }: {
   title: string;
+  subtitle?: string;
   showBack?: boolean;
   right?: React.ReactNode;
 }) {
@@ -27,6 +29,8 @@ export default function AppHeader({
       end={{ x: 1, y: 1 }}
       style={[styles.header, { paddingTop: insets.top }]}
     >
+      <View style={styles.glowOne} pointerEvents="none" />
+      <View style={styles.glowTwo} pointerEvents="none" />
       <View style={styles.row}>
         {showBack && (
           <TouchableOpacity
@@ -39,9 +43,16 @@ export default function AppHeader({
             <Ionicons name="arrow-back" size={22} color={COLORS.white} />
           </TouchableOpacity>
         )}
-        <Text style={styles.title} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={styles.titleWrap}>
+          <Text style={styles.title} numberOfLines={1}>
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
         <View style={styles.rightSlot}>{right}</View>
       </View>
     </LinearGradient>
@@ -50,33 +61,60 @@ export default function AppHeader({
 
 const styles = StyleSheet.create({
   header: {
+    overflow: 'hidden',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.25)',
     zIndex: 20,
-    elevation: 8,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
+  },
+  glowOne: {
+    position: 'absolute',
+    top: -110,
+    right: -50,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  glowTwo: {
+    position: 'absolute',
+    top: -70,
+    left: -70,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: 'rgba(255,255,255,0.07)',
   },
   row: {
-    height: 56,
+    height: 58,
     paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
   },
   backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
     backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
+  titleWrap: {
     flex: 1,
+  },
+  title: {
     color: COLORS.white,
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  subtitle: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 1,
     letterSpacing: 0.2,
   },
   rightSlot: {
