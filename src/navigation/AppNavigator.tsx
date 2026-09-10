@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { BlurView, BlurTargetView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { COLORS } from '../theme/colors';
@@ -33,6 +35,40 @@ import EditSignatureScreen from '../screens/EditSignatureScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+const glassStyles = StyleSheet.create({
+  fill: { flex: 1 },
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+});
+
+function GlassTabBackdrop({ target }: { target: React.RefObject<View | null> }) {
+  return (
+    <BlurView
+      blurTarget={target}
+      blurMethod="dimezisBlurViewSdk31Plus"
+      intensity={88}
+      tint="light"
+      style={glassStyles.backdrop}
+    />
+  );
+}
+
+const glassTabBarStyle = {
+  backgroundColor: 'rgba(255,255,255,0.35)',
+  borderTopColor: 'rgba(255,255,255,0.6)',
+  borderTopWidth: StyleSheet.hairlineWidth + 0.5,
+  elevation: 24,
+  shadowColor: '#0F172A',
+  shadowOffset: { width: 0, height: -8 },
+  shadowOpacity: 0.08,
+  shadowRadius: 20,
+} as const;
 
 const screenOptions = {
   headerStyle: { backgroundColor: COLORS.primary },
@@ -91,20 +127,24 @@ function TeacherSettingsTab() {
 }
 
 function TeacherTabs() {
+  const blurTarget = useRef<View | null>(null);
+  const tabBarBackground = useCallback(
+    () => <GlassTabBackdrop target={blurTarget} />,
+    []
+  );
+
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textSecondary,
-        tabBarStyle: {
-          backgroundColor: COLORS.surface,
-          borderTopColor: COLORS.borderLight,
-          borderTopWidth: 1,
-        },
-        tabBarLabelStyle: { fontWeight: '600' as const },
-      }}
-    >
+    <BlurTargetView ref={blurTarget} style={glassStyles.fill}>
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: COLORS.primary,
+          tabBarInactiveTintColor: COLORS.textSecondary,
+          tabBarBackground,
+          tabBarStyle: glassTabBarStyle,
+          tabBarLabelStyle: { fontWeight: '600' as const },
+        }}
+      >
       <Tab.Screen
         name="DashboardTab"
         component={DashboardTab}
@@ -146,6 +186,7 @@ function TeacherTabs() {
         }}
       />
     </Tab.Navigator>
+    </BlurTargetView>
   );
 }
 
@@ -207,20 +248,24 @@ function StudentSettingsTab() {
 }
 
 function StudentTabs() {
+  const blurTarget = useRef<View | null>(null);
+  const tabBarBackground = useCallback(
+    () => <GlassTabBackdrop target={blurTarget} />,
+    []
+  );
+
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textSecondary,
-        tabBarStyle: {
-          backgroundColor: COLORS.surface,
-          borderTopColor: COLORS.borderLight,
-          borderTopWidth: 1,
-        },
-        tabBarLabelStyle: { fontWeight: '600' as const },
-      }}
-    >
+    <BlurTargetView ref={blurTarget} style={glassStyles.fill}>
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: COLORS.primary,
+          tabBarInactiveTintColor: COLORS.textSecondary,
+          tabBarBackground,
+          tabBarStyle: glassTabBarStyle,
+          tabBarLabelStyle: { fontWeight: '600' as const },
+        }}
+      >
       <Tab.Screen
         name="HomeTab"
         component={HomeTab}
@@ -254,6 +299,7 @@ function StudentTabs() {
         }}
       />
     </Tab.Navigator>
+    </BlurTargetView>
   );
 }
 
