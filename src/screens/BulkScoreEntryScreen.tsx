@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -74,7 +75,14 @@ export default function BulkScoreEntryScreen() {
   }
 
   async function handleSave(status: 'draft' | 'ready_to_sign') {
-    if (!db || !currentUser) return;
+    if (!db || !currentUser) {
+      Alert.alert('Error', 'You need to be signed in to save records.');
+      return;
+    }
+    if (students.length === 0) {
+      Alert.alert('Error', 'This class has no students yet.');
+      return;
+    }
     setSaving(true);
     try {
       const records = students.map((student) => {
@@ -173,19 +181,29 @@ export default function BulkScoreEntryScreen() {
 
       <View style={styles.bottomActions}>
         <TouchableOpacity
-          style={[styles.draftBtn, saving && { opacity: 0.5 }]}
+          style={[styles.draftBtn, saving && { opacity: 0.6 }]}
           onPress={() => handleSave('draft')}
           disabled={saving}
         >
-          <Text style={styles.draftBtnText}>Save Draft</Text>
+          {saving ? (
+            <ActivityIndicator size="small" color={COLORS.textSecondary} />
+          ) : (
+            <Text style={styles.draftBtnText}>Save Draft</Text>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.signBtn, saving && { opacity: 0.5 }]}
+          style={[styles.signBtn, saving && { opacity: 0.6 }]}
           onPress={() => handleSave('ready_to_sign')}
           disabled={saving}
         >
-          <Ionicons name="checkmark-circle" size={18} color={COLORS.white} />
-          <Text style={styles.signBtnText}>Save & Sign All</Text>
+          {saving ? (
+            <ActivityIndicator size="small" color={COLORS.white} />
+          ) : (
+            <>
+              <Ionicons name="checkmark-circle" size={18} color={COLORS.white} />
+              <Text style={styles.signBtnText}>Save & Sign All</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </View>

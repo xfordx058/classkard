@@ -198,7 +198,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.footer}>ClassKard v1.0 - Teacher Edition</Text>
+        <Text style={styles.footer}>ClassKard v2.0 - Teacher Edition</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );

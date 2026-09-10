@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -48,6 +49,7 @@ export default function QuickEntryScreen() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [entries, setEntries] = useState<Record<number, any>>({});
   const [saving, setSaving] = useState(false);
+  const [slow, setSlow] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,12 +132,26 @@ export default function QuickEntryScreen() {
   }
 
   async function handleSave(status: 'draft' | 'ready_to_sign') {
-    if (!db || !currentUser || !selectedSection) return;
+    if (!db || !currentUser) {
+      Alert.alert('Error', 'You need to be signed in to save records.');
+      return;
+    }
+    if (!selectedSection) {
+      Alert.alert('Error', 'Pick a class first.');
+      setStep('section');
+      return;
+    }
+    if (students.length === 0) {
+      Alert.alert('Error', 'This class has no students yet.');
+      return;
+    }
     if (!date.trim()) {
       Alert.alert('Error', 'Date is required.');
       return;
     }
     setSaving(true);
+    setSlow(false);
+    const slowTimer = setTimeout(() => setSlow(true), 8000);
     try {
       const records = students.map((student) => {
         const val = entries[student.id];
@@ -163,6 +179,7 @@ export default function QuickEntryScreen() {
       });
 
       await createBulkRecords(db, records);
+      clearTimeout(slowTimer);
       Alert.alert(
         'Success',
         `${records.length} records ${status === 'ready_to_sign' ? 'saved and ready to sign' : 'saved as draft'}.`,
@@ -170,9 +187,11 @@ export default function QuickEntryScreen() {
       );
       toast('success', `${records.length} records saved`);
     } catch (e: any) {
-      toast('error', e.message ?? 'Failed to save records.');
+      clearTimeout(slowTimer);
+      Alert.alert('Error', e?.message ?? 'Failed to save records. Check your connection and try again.');
     } finally {
       setSaving(false);
+      setSlow(false);
     }
   }
 
@@ -388,20 +407,35 @@ export default function QuickEntryScreen() {
         )}
       />
       <View style={styles.bottomActions}>
-        <TouchableOpacity
-          style={[styles.draftBtn, saving && { opacity: 0.5 }]}
-          onPress={() => handleSave('draft')}
-          disabled={saving}
-        >
-          <Text style={styles.draftBtnText}>Save Draft</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.signBtn, saving && { opacity: 0.5 }]}
-          onPress={() => handleSave('ready_to_sign')}
-          disabled={saving}
-        >
-          <Text style={styles.signBtnText}>Save & Sign</Text>
-        </TouchableOpacity>
+        {slow && (
+          <Text style={styles.slowHint}>
+            Still saving... check your connection.
+          </Text>
+        )}
+        <View style={styles.bottomRow}>
+          <TouchableOpacity
+            style={[styles.draftBtn, saving && { opacity: 0.6 }]}
+            onPress={() => handleSave('draft')}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={COLORS.textSecondary} />
+            ) : (
+              <Text style={styles.draftBtnText}>Save Draft</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.signBtn, saving && { opacity: 0.6 }]}
+            onPress={() => handleSave('ready_to_sign')}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Text style={styles.signBtnText}>Save & Sign</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -672,12 +706,21 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
     padding: 16,
-    gap: 12,
+    gap: 6,
     backgroundColor: COLORS.white,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
+  },
+  slowHint: {
+    fontSize: 12,
+    color: COLORS.warning,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  bottomRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
   draftBtn: {
     flex: 1,

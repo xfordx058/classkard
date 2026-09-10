@@ -57,7 +57,7 @@ export default function SettingsScreen() {
               setCurrentUser(null);
               toast('info', 'Local data cleared');
             } catch (e: any) {
-              Alert.alert('Error', e.message ?? 'Failed to clear data.');
+              Alert.alert('Error', e.message ?? 'Failed to clear local data.');
             }
           },
         },
@@ -157,7 +157,7 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       ))}
 
-      <Text style={styles.versionText}>ClassKard v1.0 - Teacher Edition</Text>
+      <Text style={styles.versionText}>ClassKard v2.0 - Student Edition</Text>
     </ScrollView>
   );
 }

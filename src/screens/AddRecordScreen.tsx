@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -50,7 +51,14 @@ export default function AddRecordScreen() {
   const [saving, setSaving] = useState(false);
 
   async function handleSave(status: 'draft' | 'ready_to_sign') {
-    if (!db || !currentUser) return;
+    if (!db || !currentUser) {
+      Alert.alert('Error', 'You need to be signed in to save records.');
+      return;
+    }
+    if (!studentId && !(bulkStudents && bulkStudents.length > 0)) {
+      Alert.alert('Error', 'No student selected for this record.');
+      return;
+    }
     if (!date.trim()) {
       Alert.alert('Error', 'Date is required.');
       return;
@@ -364,16 +372,28 @@ export default function AddRecordScreen() {
           onPress={() => handleSave('draft')}
           disabled={saving}
         >
-          <Ionicons name="save-outline" size={18} color={COLORS.textSecondary} />
-          <Text style={styles.draftButtonText}>Save Draft</Text>
+          {saving ? (
+            <ActivityIndicator size="small" color={COLORS.textSecondary} />
+          ) : (
+            <>
+              <Ionicons name="save-outline" size={18} color={COLORS.textSecondary} />
+              <Text style={styles.draftButtonText}>Save Draft</Text>
+            </>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.signButton, saving && styles.buttonDisabled]}
           onPress={() => handleSave('ready_to_sign')}
           disabled={saving}
         >
-          <Ionicons name="checkmark-circle" size={18} color={COLORS.white} />
-          <Text style={styles.signButtonText}>Save & Sign</Text>
+          {saving ? (
+            <ActivityIndicator size="small" color={COLORS.white} />
+          ) : (
+            <>
+              <Ionicons name="checkmark-circle" size={18} color={COLORS.white} />
+              <Text style={styles.signButtonText}>Save & Sign</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </ScrollView>
