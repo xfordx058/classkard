@@ -32,6 +32,7 @@ import StudentTimelineScreen from '../screens/StudentTimelineScreen';
 import StudentDashboardScreen from '../screens/StudentDashboardScreen';
 import JoinClassScreen from '../screens/JoinClassScreen';
 import EditSignatureScreen from '../screens/EditSignatureScreen';
+import FloatingBackButton from '../components/FloatingBackButton';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -70,12 +71,36 @@ const glassTabBarStyle = {
   shadowRadius: 20,
 } as const;
 
+const withBack = (C: React.ComponentType<any>) => (props: any) => (
+  <View style={glassStyles.fill}>
+    <C {...props} />
+    <FloatingBackButton />
+  </View>
+);
+
+const UnsignedRecordsW = withBack(UnsignedRecordsScreen);
+const QuickEntryW = withBack(QuickEntryScreen);
+const SearchW = withBack(SearchScreen);
+const ReportsW = withBack(ReportsScreen);
+const SectionDetailW = withBack(SectionDetailScreen);
+const StudentProfileW = withBack(StudentProfileScreen);
+const CardDetailW = withBack(CardDetailScreen);
+const AddRecordW = withBack(AddRecordScreen);
+const TimelineW = withBack(TimelineScreen);
+const EnrollmentRequestsW = withBack(EnrollmentRequestsScreen);
+const AddStudentW = withBack(AddStudentScreen);
+const BulkScoreEntryW = withBack(BulkScoreEntryScreen);
+const SignatureW = withBack(SignatureScreen);
+const CreateSectionW = withBack(CreateSectionScreen);
+const ManageAcademicYearsW = withBack(ManageAcademicYearsScreen);
+const ManageSubjectsW = withBack(ManageSubjectsScreen);
+const EditSignatureW = withBack(EditSignatureScreen);
+const JoinClassW = withBack(JoinClassScreen);
+const StudentTimelineW = withBack(StudentTimelineScreen);
+
 const screenOptions = {
-  headerStyle: { backgroundColor: COLORS.primary },
-  headerTintColor: COLORS.white,
-  headerTitleStyle: { fontWeight: '600' as const },
-  contentStyle: { backgroundColor: COLORS.background },
-};
+  headerShown: false,
+}
 
 function AuthStack() {
   return (
@@ -194,23 +219,23 @@ function TeacherRoot() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="MainTabs" component={TeacherTabs} options={{ headerShown: false }} />
-      <Stack.Screen name="UnsignedRecords" component={UnsignedRecordsScreen} options={{ title: 'Unsigned Records' }} />
-      <Stack.Screen name="QuickEntry" component={QuickEntryScreen} options={{ title: 'Quick Entry' }} />
-      <Stack.Screen name="Search" component={SearchScreen} options={{ title: 'Search' }} />
-      <Stack.Screen name="Reports" component={ReportsScreen} options={{ title: 'Reports' }} />
-      <Stack.Screen name="SectionDetail" component={SectionDetailScreen} options={{ title: 'Section Details' }} />
-      <Stack.Screen name="StudentProfile" component={StudentProfileScreen} options={{ title: 'Student Profile' }} />
-      <Stack.Screen name="CardDetail" component={CardDetailScreen} options={{ title: 'Card Details' }} />
-      <Stack.Screen name="AddRecord" component={AddRecordScreen} options={{ title: 'Add Record' }} />
-      <Stack.Screen name="Timeline" component={TimelineScreen} options={{ title: 'Timeline' }} />
-      <Stack.Screen name="EnrollmentRequests" component={EnrollmentRequestsScreen} options={{ title: 'Enrollment Requests' }} />
-      <Stack.Screen name="AddStudent" component={AddStudentScreen} options={{ title: 'Add Student' }} />
-      <Stack.Screen name="BulkScoreEntry" component={BulkScoreEntryScreen} options={{ title: 'Bulk Score Entry' }} />
-      <Stack.Screen name="Signature" component={SignatureScreen} options={{ title: 'Signature' }} />
-      <Stack.Screen name="CreateSection" component={CreateSectionScreen} options={{ title: 'Create Section' }} />
-      <Stack.Screen name="ManageAcademicYears" component={ManageAcademicYearsScreen} options={{ title: 'Academic Years' }} />
-      <Stack.Screen name="ManageSubjects" component={ManageSubjectsScreen} options={{ title: 'Subjects' }} />
-      <Stack.Screen name="EditSignature" component={EditSignatureScreen} options={{ title: 'My Signature' }} />
+      <Stack.Screen name="UnsignedRecords" component={UnsignedRecordsW} options={{ title: 'Unsigned Records' }} />
+      <Stack.Screen name="QuickEntry" component={QuickEntryW} options={{ title: 'Quick Entry' }} />
+      <Stack.Screen name="Search" component={SearchW} options={{ title: 'Search' }} />
+      <Stack.Screen name="Reports" component={ReportsW} options={{ title: 'Reports' }} />
+      <Stack.Screen name="SectionDetail" component={SectionDetailW} options={{ title: 'Section Details' }} />
+      <Stack.Screen name="StudentProfile" component={StudentProfileW} options={{ title: 'Student Profile' }} />
+      <Stack.Screen name="CardDetail" component={CardDetailW} options={{ title: 'Card Details' }} />
+      <Stack.Screen name="AddRecord" component={AddRecordW} options={{ title: 'Add Record' }} />
+      <Stack.Screen name="Timeline" component={TimelineW} options={{ title: 'Timeline' }} />
+      <Stack.Screen name="EnrollmentRequests" component={EnrollmentRequestsW} options={{ title: 'Enrollment Requests' }} />
+      <Stack.Screen name="AddStudent" component={AddStudentW} options={{ title: 'Add Student' }} />
+      <Stack.Screen name="BulkScoreEntry" component={BulkScoreEntryW} options={{ title: 'Bulk Score Entry' }} />
+      <Stack.Screen name="Signature" component={SignatureW} options={{ title: 'Signature' }} />
+      <Stack.Screen name="CreateSection" component={CreateSectionW} options={{ title: 'Create Section' }} />
+      <Stack.Screen name="ManageAcademicYears" component={ManageAcademicYearsW} options={{ title: 'Academic Years' }} />
+      <Stack.Screen name="ManageSubjects" component={ManageSubjectsW} options={{ title: 'Subjects' }} />
+      <Stack.Screen name="EditSignature" component={EditSignatureW} options={{ title: 'My Signature' }} />
     </Stack.Navigator>
   );
 }
@@ -307,11 +332,11 @@ function StudentRoot() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="MainTabs" component={StudentTabs} options={{ headerShown: false }} />
-      <Stack.Screen name="JoinClass" component={JoinClassScreen} options={{ title: 'Join a Class' }} />
-      <Stack.Screen name="StudentProfile" component={StudentProfileScreen} options={{ title: 'My Cards' }} />
-      <Stack.Screen name="CardDetail" component={CardDetailScreen} options={{ title: 'Card Details' }} />
-      <Stack.Screen name="StudentTimeline" component={StudentTimelineScreen} options={{ title: 'Timeline' }} />
-      <Stack.Screen name="EditSignature" component={EditSignatureScreen} options={{ title: 'My Signature' }} />
+      <Stack.Screen name="JoinClass" component={JoinClassW} options={{ title: 'Join a Class' }} />
+      <Stack.Screen name="StudentProfile" component={StudentProfileW} options={{ title: 'My Cards' }} />
+      <Stack.Screen name="CardDetail" component={CardDetailW} options={{ title: 'Card Details' }} />
+      <Stack.Screen name="StudentTimeline" component={StudentTimelineW} options={{ title: 'Timeline' }} />
+      <Stack.Screen name="EditSignature" component={EditSignatureW} options={{ title: 'My Signature' }} />
     </Stack.Navigator>
   );
 }

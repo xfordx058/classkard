@@ -112,9 +112,85 @@ export default function SignatureScreen() {
 
   const catColor = CATEGORY_COLORS[record.category] ?? COLORS.textLight;
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {isSigned ? (
+  const renderDetailCard = () => (
+    <View style={styles.detailCard}>
+      <View style={[styles.categoryBar, { backgroundColor: catColor }]} />
+      <View style={styles.detailContent}>
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Category</Text>
+          <View style={[styles.catBadge, { backgroundColor: catColor + '20' }]}>
+            <Text style={[styles.catBadgeText, { color: catColor }]}>
+              {record.category}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Student</Text>
+          <Text style={styles.detailValue}>
+            {(record as any).studentName ?? 'N/A'}
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Title</Text>
+          <Text style={styles.detailValue}>{record.title || 'N/A'}</Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Date</Text>
+          <Text style={styles.detailValue}>{record.date}</Text>
+        </View>
+
+        {record.category === 'ATTENDANCE' && record.attendanceStatus && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Attendance</Text>
+            <Text style={styles.detailValue}>{record.attendanceStatus}</Text>
+          </View>
+        )}
+
+        {record.score != null && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Score</Text>
+            <Text style={styles.detailValue}>
+              {record.score} / {record.totalScore ?? '?'}
+              {record.percentage != null ? ` (${record.percentage.toFixed(1)}%)` : ''}
+            </Text>
+          </View>
+        )}
+
+        {record.remarks ? (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Remarks</Text>
+            <Text style={styles.detailValue}>{record.remarks}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Status</Text>
+          <Text style={[styles.detailValue, { color: STATUS_COLORS[record.status] ?? COLORS.text }]}>
+            {record.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+          </Text>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Created</Text>
+          <Text style={styles.detailValue}>{record.createdAt}</Text>
+        </View>
+
+        {record.signedAt && (
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Signed At</Text>
+            <Text style={styles.detailValue}>{record.signedAt}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
+  if (isSigned) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.statusHeader}>
           <Ionicons name="checkmark-circle" size={48} color={COLORS.success} />
           <Text style={styles.signedTitle}>Record Signed</Text>
@@ -122,90 +198,10 @@ export default function SignatureScreen() {
             This record has been signed and locked.
           </Text>
         </View>
-      ) : (
-        <View style={styles.statusHeader}>
-          <Ionicons name="document-text" size={36} color={COLORS.warning} />
-          <Text style={styles.reviewTitle}>Review Record</Text>
-          <Text style={styles.reviewSubtitle}>Everything looks correct?</Text>
-        </View>
-      )}
 
-      <View style={styles.detailCard}>
-        <View style={[styles.categoryBar, { backgroundColor: catColor }]} />
-        <View style={styles.detailContent}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Category</Text>
-            <View style={[styles.catBadge, { backgroundColor: catColor + '20' }]}>
-              <Text style={[styles.catBadgeText, { color: catColor }]}>
-                {record.category}
-              </Text>
-            </View>
-          </View>
+        {renderDetailCard()}
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Student</Text>
-            <Text style={styles.detailValue}>
-              {(record as any).studentName ?? 'N/A'}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Title</Text>
-            <Text style={styles.detailValue}>{record.title || 'N/A'}</Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Date</Text>
-            <Text style={styles.detailValue}>{record.date}</Text>
-          </View>
-
-          {record.category === 'ATTENDANCE' && record.attendanceStatus && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Attendance</Text>
-              <Text style={styles.detailValue}>{record.attendanceStatus}</Text>
-            </View>
-          )}
-
-          {record.score != null && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Score</Text>
-              <Text style={styles.detailValue}>
-                {record.score} / {record.totalScore ?? '?'}
-                {record.percentage != null ? ` (${record.percentage.toFixed(1)}%)` : ''}
-              </Text>
-            </View>
-          )}
-
-          {record.remarks ? (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Remarks</Text>
-              <Text style={styles.detailValue}>{record.remarks}</Text>
-            </View>
-          ) : null}
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Status</Text>
-            <Text style={[styles.detailValue, { color: STATUS_COLORS[record.status] ?? COLORS.text }]}>
-              {record.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Created</Text>
-            <Text style={styles.detailValue}>{record.createdAt}</Text>
-          </View>
-
-          {record.signedAt && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Signed At</Text>
-              <Text style={styles.detailValue}>{record.signedAt}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      {isSigned ? (
-        signedImage ? (
+        {signedImage ? (
           <View style={styles.signatureCard}>
             <View style={styles.signatureHeader}>
               <Ionicons name="brush" size={18} color={COLORS.success} />
@@ -228,46 +224,60 @@ export default function SignatureScreen() {
               Signed by {currentUser?.name ?? 'Teacher'}
             </Text>
           </View>
-        )
-      ) : (
-        <View>
-          <Text style={styles.padTitle}>Draw your signature in the box</Text>
-          <View style={styles.padWrap}>
-            <SignatureScreenComp
-              ref={signatureRef}
-              onOK={handleConfirm}
-              onEmpty={handlePadEmpty}
-              onBegin={() => setHasSignature(true)}
-              onClear={() => setHasSignature(false)}
-              dataURL={currentUser?.signatureData && String(currentUser.signatureData).startsWith('data:image') ? String(currentUser.signatureData) : undefined}
-              trimWhitespace
-              imageType="image/png"
-              webStyle={signatureWebStyle}
-            />
-          </View>
-          <TouchableOpacity
-            style={[styles.signButton, signing && styles.signButtonDisabled]}
-            onPress={handleSignPressed}
-            disabled={signing}
-            accessibilityRole="button"
-            accessibilityLabel="Sign and save this record"
-          >
-            {signing ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle" size={18} color={COLORS.white} />
-                <Text style={styles.signButtonText}>Sign & Save</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.clearButton} onPress={handleClear}>
-            <Ionicons name="refresh" size={16} color={COLORS.textSecondary} />
-            <Text style={styles.clearButtonText}>Clear & Start Over</Text>
-          </TouchableOpacity>
+        )}
+      </ScrollView>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <ScrollView style={styles.flex} contentContainerStyle={styles.content}>
+        <View style={styles.statusHeader}>
+          <Ionicons name="document-text" size={36} color={COLORS.warning} />
+          <Text style={styles.reviewTitle}>Review Record</Text>
+          <Text style={styles.reviewSubtitle}>Everything looks correct?</Text>
         </View>
-      )}
-    </ScrollView>
+
+        {renderDetailCard()}
+      </ScrollView>
+
+      <View style={styles.padSection}>
+        <Text style={styles.padTitle}>Draw your signature in the box</Text>
+        <View style={styles.padWrap}>
+          <SignatureScreenComp
+            ref={signatureRef}
+            onOK={handleConfirm}
+            onEmpty={handlePadEmpty}
+            onBegin={() => setHasSignature(true)}
+            onClear={() => setHasSignature(false)}
+            dataURL={currentUser?.signatureData && String(currentUser.signatureData).startsWith('data:image') ? String(currentUser.signatureData) : undefined}
+            trimWhitespace
+            imageType="image/png"
+            webStyle={signatureWebStyle}
+          />
+        </View>
+        <TouchableOpacity
+          style={[styles.signButton, signing && styles.signButtonDisabled]}
+          onPress={handleSignPressed}
+          disabled={signing}
+          accessibilityRole="button"
+          accessibilityLabel="Sign and save this record"
+        >
+          {signing ? (
+            <ActivityIndicator size="small" color={COLORS.white} />
+          ) : (
+            <>
+              <Ionicons name="checkmark-circle" size={18} color={COLORS.white} />
+              <Text style={styles.signButtonText}>Sign & Save</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.clearButton} onPress={handleClear}>
+          <Ionicons name="refresh" size={16} color={COLORS.textSecondary} />
+          <Text style={styles.clearButtonText}>Clear & Start Over</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -297,6 +307,17 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 40,
+  },
+  flex: {
+    flex: 1,
+  },
+  padSection: {
+    backgroundColor: COLORS.background,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    padding: 16,
+    paddingTop: 14,
+    paddingBottom: 24,
   },
   centered: {
     flex: 1,

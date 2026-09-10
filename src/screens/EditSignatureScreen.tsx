@@ -22,6 +22,7 @@ export default function EditSignatureScreen() {
 
   const [saving, setSaving] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
+  const signAttemptedRef = useRef(false);
   const [preview, setPreview] = useState<string | null>(
     currentUser?.signatureData && String(currentUser.signatureData).startsWith('data:image')
       ? String(currentUser.signatureData)
@@ -43,9 +44,22 @@ export default function EditSignatureScreen() {
     }
   }
 
+  function handleSignPressed() {
+    signAttemptedRef.current = true;
+    signatureRef.current?.readSignature();
+  }
+
+  function handlePadEmpty() {
+    if (signAttemptedRef.current) {
+      signAttemptedRef.current = false;
+      Alert.alert('Empty Signature', 'Draw your signature in the box first, then tap Save Signature.');
+    }
+  }
+
   function handleClearPad() {
     signatureRef.current?.clearSignature();
     setHasDrawn(false);
+    signAttemptedRef.current = false;
   }
 
   return (
@@ -58,17 +72,32 @@ export default function EditSignatureScreen() {
         <SignatureScreenComp
           ref={signatureRef}
           onOK={handleSave}
-          onEmpty={() => setHasDrawn(false)}
+          onEmpty={handlePadEmpty}
           onBegin={() => setHasDrawn(true)}
           onClear={() => setHasDrawn(false)}
           dataURL={currentUser?.signatureData && String(currentUser.signatureData).startsWith('data:image') ? String(currentUser.signatureData) : undefined}
-          clearText="Clear"
-          confirmText="Save Signature"
           trimWhitespace
           imageType="image/png"
           webStyle={signatureWebStyle}
         />
       </View>
+
+      <TouchableOpacity
+        style={[styles.signButton, saving && styles.signButtonDisabled]}
+        onPress={handleSignPressed}
+        disabled={saving}
+        accessibilityRole="button"
+        accessibilityLabel="Save my signature"
+      >
+        {saving ? (
+          <ActivityIndicator size="small" color={COLORS.white} />
+        ) : (
+          <>
+            <Ionicons name="checkmark-circle" size={18} color={COLORS.white} />
+            <Text style={styles.signButtonText}>Save Signature</Text>
+          </>
+        )}
+      </TouchableOpacity>
 
       <TouchableOpacity style={styles.clearButton} onPress={handleClearPad}>
         <Ionicons name="refresh" size={16} color={COLORS.textSecondary} />
@@ -99,15 +128,15 @@ export default function EditSignatureScreen() {
 }
 
 const signatureWebStyle = `
-  .m-signature-pad { border: 2px dashed #cfd8d3; border-radius: 14px; background: #ffffff; }
-  .m-signature-pad--body { border: none; }
-  .m-signature-pad--footer { padding-top: 8px; }
-  .m-signature-pad--footer .description { display: none; }
-  .m-signature-pad--footer .button {
-    background: #22C55E; color: #ffffff; border-radius: 8px;
-    font-weight: 700; font-size: 14px;
+  .m-signature-pad {
+    display: flex;
+    flex-direction: column;
+    border: 2px dashed #cfd8d3;
+    border-radius: 14px;
+    background: #ffffff;
   }
-  .m-signature-pad--footer .button.clear { background: #f1f5f3; color: #475569; }
+  .m-signature-pad--body { flex: 1; height: auto; border: none; }
+  .m-signature-pad--footer { display: none; }
 `;
 
 const styles = StyleSheet.create({
@@ -133,6 +162,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
     gap: 6,
+  },
+  signButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.success,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 6,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  signButtonDisabled: {
+    opacity: 0.6,
+  },
+  signButtonText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
   },
   clearButtonText: {
     fontSize: 14,
