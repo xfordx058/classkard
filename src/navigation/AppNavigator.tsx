@@ -33,7 +33,7 @@ import StudentTimelineScreen from '../screens/StudentTimelineScreen';
 import StudentDashboardScreen from '../screens/StudentDashboardScreen';
 import JoinClassScreen from '../screens/JoinClassScreen';
 import EditSignatureScreen from '../screens/EditSignatureScreen';
-import FloatingBackButton from '../components/FloatingBackButton';
+import AppHeader from '../components/AppHeader';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -72,16 +72,32 @@ const glassTabBarStyle = {
   shadowRadius: 20,
 } as const;
 
-const screenTop = 56;
+const HEADER_TITLES: Record<string, string> = {
+  UnsignedRecords: 'Unsigned Records',
+  QuickEntry: 'Quick Entry',
+  Search: 'Search',
+  Reports: 'Reports',
+  SectionDetail: 'Section Details',
+  StudentProfile: 'Student Profile',
+  CardDetail: 'Card Details',
+  AddRecord: 'Add Record',
+  Timeline: 'Timeline',
+  EnrollmentRequests: 'Enrollment Requests',
+  AddStudent: 'Add Student',
+  BulkScoreEntry: 'Bulk Score Entry',
+  Signature: 'Signature',
+  CreateSection: 'Create Section',
+  ManageAcademicYears: 'Academic Years',
+  ManageSubjects: 'Subjects',
+  EditSignature: 'My Signature',
+  JoinClass: 'Join a Class',
+  StudentTimeline: 'Timeline',
+};
 
 const withBack = (C: React.ComponentType<any>) => (props: any) => (
   <View style={glassStyles.fill}>
-    <SafeAreaView edges={['top']} style={glassStyles.fill}>
-      <View style={{ flex: 1, paddingTop: screenTop }}>
-        <C {...props} />
-      </View>
-    </SafeAreaView>
-    <FloatingBackButton />
+    <AppHeader title={HEADER_TITLES[props?.route?.name] ?? ''} showBack />
+    <C {...props} />
   </View>
 );
 
@@ -91,16 +107,23 @@ const withSafeArea = (C: React.ComponentType<any>) => (props: any) => (
   </SafeAreaView>
 );
 
+const withHeader = (title: string) => (C: React.ComponentType<any>) => (props: any) => (
+  <View style={glassStyles.fill}>
+    <AppHeader title={title} showBack={false} />
+    <C {...props} />
+  </View>
+);
+
 const LoginW = withSafeArea(LoginScreen);
 const RegisterW = withSafeArea(RegisterScreen);
-const DashboardW = withSafeArea(DashboardScreen);
-const ClassesListW = withSafeArea(ClassesListScreen);
-const QuickEntrySafeW = withSafeArea(QuickEntryScreen);
-const SearchSafeW = withSafeArea(SearchScreen);
-const SettingsW = withSafeArea(SettingsScreen);
-const StudentDashboardW = withSafeArea(StudentDashboardScreen);
-const StudentProfileSafeW = withSafeArea(StudentProfileScreen);
-const StudentTimelineSafeW = withSafeArea(StudentTimelineScreen);
+const DashboardW = withHeader('Dashboard')(DashboardScreen);
+const ClassesListW = withHeader('My Classes')(ClassesListScreen);
+const QuickEntrySafeW = withHeader('Quick Entry')(QuickEntryScreen);
+const SearchSafeW = withHeader('Search')(SearchScreen);
+const SettingsW = withHeader('Settings')(SettingsScreen);
+const StudentDashboardW = withHeader('Home')(StudentDashboardScreen);
+const StudentProfileSafeW = withHeader('My Cards')(StudentProfileScreen);
+const StudentTimelineSafeW = withHeader('My Timeline')(StudentTimelineScreen);
 
 const UnsignedRecordsW = withBack(UnsignedRecordsScreen);
 const QuickEntryW = withBack(QuickEntryScreen);
