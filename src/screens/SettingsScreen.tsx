@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useApp } from '../context/AppContext';
 import { clearDatabase } from '../db/database';
+import { supabase } from '../lib/supabase';
 import { COLORS } from '../theme/colors';
 
 export default function SettingsScreen() {
@@ -20,18 +21,25 @@ export default function SettingsScreen() {
   function handleLogout() {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', style: 'destructive', onPress: () => setCurrentUser(null) },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.auth.signOut();
+          setCurrentUser(null);
+        },
+      },
     ]);
   }
 
   function handleClearData() {
     Alert.alert(
-      'Clear All Data',
-      'This will permanently delete ALL records, students, sections, and settings. This cannot be undone!',
+      'Clear Local Data',
+      'This clears the local cache and signs you out. Your cloud data is kept.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Clear Everything',
+          text: 'Clear',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -67,6 +75,12 @@ export default function SettingsScreen() {
       onPress: () => navigation.navigate('ManageSubjects'),
     },
     {
+      icon: 'brush',
+      label: 'My Signature',
+      color: COLORS.info,
+      onPress: () => navigation.navigate('EditSignature'),
+    },
+    {
       icon: 'download',
       label: 'Export Database',
       color: COLORS.secondary,
@@ -74,7 +88,7 @@ export default function SettingsScreen() {
     },
     {
       icon: 'trash',
-      label: 'Clear Data',
+      label: 'Clear Local Data',
       color: COLORS.error,
       onPress: handleClearData,
     },

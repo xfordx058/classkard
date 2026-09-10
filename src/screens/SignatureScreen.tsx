@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+import SignatureScreenComp, { SignatureViewRef } from 'react-native-signature-canvas';
 import { useApp } from '../context/AppContext';
-import { getRecordById, signRecord, createAuditLog } from '../db/queries';
+import { getRecordById, signRecord, createAuditLog, updateUser } from '../db/queries';
 import { COLORS, CATEGORY_COLORS, STATUS_COLORS } from '../theme/colors';
 import { StudentRecord } from '../types';
 
@@ -21,9 +23,13 @@ export default function SignatureScreen() {
   const route = useRoute<any>();
   const { recordId } = route.params;
 
+  const signatureRef = useRef<SignatureViewRef>(null);
+
   const [record, setRecord] = useState<StudentRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [signedImage, setSignedImage] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -36,18 +42,20 @@ export default function SignatureScreen() {
     setFetching(true);
     const r = await getRecordById(db, recordId);
     setRecord(r);
+    if (r?.signatureData && String(r.signatureData).startsWith('data:image')) {
+      setSignedImage(String(r.signatureData));
+    }
     setFetching(false);
   }
 
   const isSigned = record?.status === 'signed' || record?.status === 'locked';
 
-  async function handleSign() {
+  async function handleConfirm(sigBase64: string) {
     if (!db || !currentUser || !record) return;
     setLoading(true);
     try {
-      const sigData = currentUser.signatureData
-        || `${currentUser.name} - ${new Date().toISOString()}`;
-      await signRecord(db, record.id, currentUser.id, sigData);
+      await signRecord(db, record.id, currentUser.id, sigBase64);
+      await updateUser(db, currentUser.id, { signatureData: sigBase64 });
       await createAuditLog(
         db,
         record.id,
@@ -57,6 +65,8 @@ export default function SignatureScreen() {
         'signed',
         'Record signed and locked'
       );
+      setSignedImage(sigBase64);
+      setHasSignature(true);
       Alert.alert('Signed', 'Record has been signed and locked.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
@@ -65,6 +75,11 @@ export default function SignatureScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleClear() {
+    signatureRef.current?.clearSignature();
+    setHasSignature(false);
   }
 
   if (fetching || !record) {
@@ -170,25 +185,70 @@ export default function SignatureScreen() {
         </View>
       </View>
 
-      {!isSigned && (
-        <TouchableOpacity
-          style={[styles.signButton, loading && { opacity: 0.5 }]}
-          onPress={handleSign}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color={COLORS.white} />
-          ) : (
-            <Ionicons name="lock-closed" size={20} color={COLORS.white} />
-          )}
-          <Text style={styles.signButtonText}>
-            {loading ? 'Signing...' : 'Sign & Lock'}
-          </Text>
-        </TouchableOpacity>
+      {isSigned ? (
+        signedImage ? (
+          <View style={styles.signatureCard}>
+            <View style={styles.signatureHeader}>
+              <Ionicons name="brush" size={18} color={COLORS.success} />
+              <Text style={styles.signatureHeaderText}>Drawn Signature</Text>
+            </View>
+            <View style={styles.signatureImageWrap}>
+              <Image
+                source={{ uri: signedImage }}
+                style={styles.signatureImage}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={styles.signatureMeta}>
+              Signed by {currentUser?.name ?? 'Teacher'} · {record.signedAt}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.signatureCard}>
+            <Text style={styles.signatureMeta}>
+              Signed by {currentUser?.name ?? 'Teacher'}
+            </Text>
+          </View>
+        )
+      ) : (
+        <View>
+          <Text style={styles.padTitle}>Draw your signature in the box</Text>
+          <View style={styles.padWrap}>
+            <SignatureScreenComp
+              ref={signatureRef}
+              onOK={handleConfirm}
+              onEmpty={() => setHasSignature(false)}
+              onBegin={() => setHasSignature(true)}
+              onClear={() => setHasSignature(false)}
+              dataURL={currentUser?.signatureData && String(currentUser.signatureData).startsWith('data:image') ? String(currentUser.signatureData) : undefined}
+              clearText="Clear"
+              confirmText="Sign"
+              trimWhitespace
+              imageType="image/png"
+              webStyle={signatureWebStyle}
+            />
+          </View>
+          <TouchableOpacity style={styles.clearButton} onPress={handleClear}>
+            <Ionicons name="refresh" size={16} color={COLORS.textSecondary} />
+            <Text style={styles.clearButtonText}>Clear & Start Over</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </ScrollView>
   );
 }
+
+const signatureWebStyle = `
+  .m-signature-pad { border: 2px dashed #cfd8d3; border-radius: 14px; background: #ffffff; }
+  .m-signature-pad--body { border: none; }
+  .m-signature-pad--footer { padding-top: 8px; }
+  .m-signature-pad--footer .description { display: none; }
+  .m-signature-pad--footer .button {
+    background: #22C55E; color: #ffffff; border-radius: 8px;
+    font-weight: 700; font-size: 14px;
+  }
+  .m-signature-pad--footer .button.clear { background: #f1f5f3; color: #475569; }
+`;
 
 const styles = StyleSheet.create({
   container: {
@@ -281,18 +341,69 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  signButton: {
+  padTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  padWrap: {
+    height: 320,
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  clearButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primary,
-    paddingVertical: 16,
-    borderRadius: 14,
-    gap: 10,
+    paddingVertical: 12,
+    gap: 6,
   },
-  signButtonText: {
-    fontSize: 17,
+  clearButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  signatureCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 4,
+  },
+  signatureHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  signatureHeaderText: {
+    fontSize: 13,
     fontWeight: '700',
-    color: COLORS.white,
+    color: COLORS.success,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  signatureImageWrap: {
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: COLORS.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 140,
+  },
+  signatureImage: {
+    width: '100%',
+    height: '100%',
+  },
+  signatureMeta: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 10,
   },
 });

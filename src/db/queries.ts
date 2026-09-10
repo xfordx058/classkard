@@ -1,4 +1,12 @@
-import { SQLiteDatabase } from 'expo-sqlite';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import * as Online from './queriesOnline';
+import {
+  cacheKey,
+  getCacheEntry,
+  setCacheEntry,
+  invalidateCache,
+  initOfflineEngine,
+} from './offline';
 import {
   User,
   AcademicYear,
@@ -11,987 +19,714 @@ import {
   AuditLog,
 } from '../types';
 
-function generateCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+export type Db = SupabaseClient;
+
+export const mapSection = Online.mapSection;
+
+// Re-export for screens that reference these types implicitly
+export type { User, AcademicYear, Subject, Section, Student, Enrollment, StudentRecord, RecordCategory, AuditLog };
+
+// ---------------------------------------------------------------------------
+// Online + queue plumbing
+// ---------------------------------------------------------------------------
+let engineStarted = false;
+export function initOffline() {
+  if (!engineStarted) {
+    engineStarted = true;
+    initOfflineEngine();
   }
-  return code;
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+async function readCached<T>(key: string): Promise<T | null> {
+  return getCacheEntry<T>(key);
+}
+
+async function writeCached(key: string, value: unknown) {
+  await setCacheEntry(key, value);
+}
+
+async function bust(...keys: string[]) {
+  await invalidateCache(...keys);
+}
+
+// ---------------------------------------------------------------------------
+// Auth + Users
+// ---------------------------------------------------------------------------
 export async function createUser(
-  db: SQLiteDatabase,
+  db: Db,
   name: string,
   email: string,
   pin: string,
   role: 'teacher' | 'student' = 'teacher'
 ): Promise<User> {
-  const result = await db.runAsync(
-    'INSERT INTO users (name, email, pin, role) VALUES (?, ?, ?, ?)',
-    [name, email, pin, role]
-  );
-  const user = await db.getFirstAsync<User>(
-    'SELECT * FROM users WHERE id = ?',
-    [result.lastInsertRowId]
-  );
-  return user!;
+  const user = await Online.createUser(db, name, email, pin, role);
+  await bust(cacheKey('academicYears'), cacheKey('users'));
+  return user;
 }
 
 export async function loginByPin(
-  db: SQLiteDatabase,
+  db: Db,
   email: string,
   pin: string
 ): Promise<User | null> {
-  const user = await db.getFirstAsync<User>(
-    "SELECT * FROM users WHERE email = ? AND pin = ? AND status = 'active'",
-    [email, pin]
-  );
-  return user ?? null;
+  return Online.loginByPin(db, email, pin);
 }
 
-export async function getUserById(
-  db: SQLiteDatabase,
+export const getUserById = async (
+  db: Db,
   id: number
-): Promise<User | null> {
-  return db.getFirstAsync<User>('SELECT * FROM users WHERE id = ?', [id]);
-}
+): Promise<User | null> => {
+  const key = cacheKey('user', id);
+  const cached = await readCached<User | null>(key);
+  if (cached !== null) return cached;
+  const u = await Online.getUserById(db, id);
+  if (u) await writeCached(key, u);
+  return u;
+};
 
 export async function updateUser(
-  db: SQLiteDatabase,
+  db: Db,
   id: number,
   data: Partial<Pick<User, 'name' | 'email' | 'pin' | 'signatureData'>>
 ): Promise<void> {
-  const fields: string[] = [];
-  const values: any[] = [];
-  if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
-  if (data.email !== undefined) { fields.push('email = ?'); values.push(data.email); }
-  if (data.pin !== undefined) { fields.push('pin = ?'); values.push(data.pin); }
-  if (data.signatureData !== undefined) { fields.push('signatureData = ?'); values.push(data.signatureData); }
-  if (fields.length === 0) return;
-  values.push(id);
-  await db.runAsync(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
+  await Online.updateUser(db, id, data);
+  await bust(cacheKey('user', id));
 }
 
-export async function getAcademicYears(
-  db: SQLiteDatabase
-): Promise<AcademicYear[]> {
-  return db.getAllAsync<AcademicYear>(
-    'SELECT * FROM academic_years ORDER BY startDate DESC'
-  );
+// ---------------------------------------------------------------------------
+// Academic Years
+// ---------------------------------------------------------------------------
+export async function getAcademicYears(db: Db): Promise<AcademicYear[]> {
+  const key = cacheKey('academicYears');
+  const cached = await readCached<AcademicYear[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getAcademicYears(db);
+  await writeCached(key, rows);
+  return rows;
 }
 
 export async function getActiveAcademicYear(
-  db: SQLiteDatabase
+  db: Db
 ): Promise<AcademicYear | null> {
-  return db.getFirstAsync<AcademicYear>(
-    "SELECT * FROM academic_years WHERE status = 'active' ORDER BY startDate DESC LIMIT 1"
-  );
+  const key = cacheKey('activeAcademicYear');
+  const cached = await readCached<AcademicYear | null>(key);
+  if (cached !== null) return cached;
+  const row = await Online.getActiveAcademicYear(db);
+  if (row) await writeCached(key, row);
+  return row;
 }
 
 export async function createAcademicYear(
-  db: SQLiteDatabase,
+  db: Db,
   name: string,
   startDate: string,
   endDate: string
 ): Promise<AcademicYear> {
-  const result = await db.runAsync(
-    'INSERT INTO academic_years (name, startDate, endDate) VALUES (?, ?, ?)',
-    [name, startDate, endDate]
-  );
-  return (await db.getFirstAsync<AcademicYear>(
-    'SELECT * FROM academic_years WHERE id = ?',
-    [result.lastInsertRowId]
-  ))!;
+  const row = await Online.createAcademicYear(db, name, startDate, endDate);
+  await bust(cacheKey('academicYears'), cacheKey('activeAcademicYear'));
+  return row;
 }
 
 export async function updateAcademicYearStatus(
-  db: SQLiteDatabase,
+  db: Db,
   id: number,
   status: 'active' | 'inactive'
 ): Promise<void> {
-  await db.runAsync('UPDATE academic_years SET status = ? WHERE id = ?', [
-    status,
-    id,
-  ]);
+  await Online.updateAcademicYearStatus(db, id, status);
+  await bust(cacheKey('academicYears'), cacheKey('activeAcademicYear'));
 }
 
-export async function deleteAcademicYear(
-  db: SQLiteDatabase,
-  id: number
-): Promise<void> {
-  await db.runAsync('DELETE FROM academic_years WHERE id = ?', [id]);
+export async function deleteAcademicYear(db: Db, id: number): Promise<void> {
+  await Online.deleteAcademicYear(db, id);
+  await bust(cacheKey('academicYears'), cacheKey('activeAcademicYear'));
 }
 
-export async function getSubjects(db: SQLiteDatabase): Promise<Subject[]> {
-  return db.getAllAsync<Subject>('SELECT * FROM subjects ORDER BY code');
+// ---------------------------------------------------------------------------
+// Subjects
+// ---------------------------------------------------------------------------
+export async function getSubjects(db: Db): Promise<Subject[]> {
+  const key = cacheKey('subjects');
+  const cached = await readCached<Subject[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getSubjects(db);
+  await writeCached(key, rows);
+  return rows;
 }
 
-export async function getSubjectById(
-  db: SQLiteDatabase,
-  id: number
-): Promise<Subject | null> {
-  return db.getFirstAsync<Subject>('SELECT * FROM subjects WHERE id = ?', [id]);
+export async function getSubjectById(db: Db, id: number): Promise<Subject | null> {
+  const key = cacheKey('subject', id);
+  const cached = await readCached<Subject | null>(key);
+  if (cached !== null) return cached;
+  const s = await Online.getSubjectById(db, id);
+  if (s) await writeCached(key, s);
+  return s;
 }
 
 export async function createSubject(
-  db: SQLiteDatabase,
+  db: Db,
   code: string,
   name: string,
   description: string
 ): Promise<Subject> {
-  const result = await db.runAsync(
-    'INSERT INTO subjects (code, name, description) VALUES (?, ?, ?)',
-    [code, name, description]
-  );
-  return (await db.getFirstAsync<Subject>(
-    'SELECT * FROM subjects WHERE id = ?',
-    [result.lastInsertRowId]
-  ))!;
+  const s = await Online.createSubject(db, code, name, description);
+  await bust(cacheKey('subjects'));
+  return s;
 }
 
 export async function updateSubject(
-  db: SQLiteDatabase,
+  db: Db,
   id: number,
   code: string,
   name: string,
   description: string
 ): Promise<void> {
-  await db.runAsync(
-    'UPDATE subjects SET code = ?, name = ?, description = ? WHERE id = ?',
-    [code, name, description, id]
-  );
+  await Online.updateSubject(db, id, code, name, description);
+  await bust(cacheKey('subjects'), cacheKey('subject', id));
 }
 
-export async function deleteSubject(
-  db: SQLiteDatabase,
-  id: number
-): Promise<void> {
-  await db.runAsync('DELETE FROM subjects WHERE id = ?', [id]);
+export async function deleteSubject(db: Db, id: number): Promise<void> {
+  await Online.deleteSubject(db, id);
+  await bust(cacheKey('subjects'), cacheKey('subject', id));
 }
 
+// ---------------------------------------------------------------------------
+// Sections
+// ---------------------------------------------------------------------------
 export async function getSectionsByTeacher(
-  db: SQLiteDatabase,
+  db: Db,
   teacherId: number,
   academicYearId?: number
 ): Promise<Section[]> {
-  if (academicYearId) {
-    return db.getAllAsync<Section>(
-      `SELECT s.*, ay.name as academicYearName, sub.name as subjectName, sub.code as subjectCode,
-        (SELECT COUNT(*) FROM enrollments e WHERE e.sectionId = s.id AND e.status = 'active') as studentCount
-       FROM sections s
-       JOIN academic_years ay ON s.academicYearId = ay.id
-       JOIN subjects sub ON s.subjectId = sub.id
-       WHERE s.teacherId = ? AND s.academicYearId = ? AND s.status = 'active'
-       ORDER BY sub.code, s.name`,
-      [teacherId, academicYearId]
-    );
-  }
-  return db.getAllAsync<Section>(
-    `SELECT s.*, ay.name as academicYearName, sub.name as subjectName, sub.code as subjectCode,
-      (SELECT COUNT(*) FROM enrollments e WHERE e.sectionId = s.id AND e.status = 'active') as studentCount
-     FROM sections s
-     JOIN academic_years ay ON s.academicYearId = ay.id
-     JOIN subjects sub ON s.subjectId = sub.id
-     WHERE s.teacherId = ? AND s.status = 'active'
-     ORDER BY ay.startDate DESC, sub.code, s.name`,
-    [teacherId]
-  );
+  const key = cacheKey('sectionsByTeacher', teacherId, academicYearId ?? '');
+  const cached = await readCached<Section[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getSectionsByTeacher(db, teacherId, academicYearId);
+  await writeCached(key, rows);
+  return rows;
 }
 
-export async function getSectionById(
-  db: SQLiteDatabase,
-  sectionId: number
-): Promise<Section | null> {
-  return db.getFirstAsync<Section>(
-    `SELECT s.*, ay.name as academicYearName, sub.name as subjectName, sub.code as subjectCode,
-      (SELECT COUNT(*) FROM enrollments e WHERE e.sectionId = s.id AND e.status = 'active') as studentCount
-     FROM sections s
-     JOIN academic_years ay ON s.academicYearId = ay.id
-     JOIN subjects sub ON s.subjectId = sub.id
-     WHERE s.id = ?`,
-    [sectionId]
-  );
+export async function getSectionById(db: Db, sectionId: number): Promise<Section | null> {
+  const key = cacheKey('section', sectionId);
+  const cached = await readCached<Section | null>(key);
+  if (cached !== null) return cached;
+  const s = await Online.getSectionById(db, sectionId);
+  if (s) await writeCached(key, s);
+  return s;
 }
 
 export async function createSection(
-  db: SQLiteDatabase,
+  db: Db,
   academicYearId: number,
   subjectId: number,
   teacherId: number,
   name: string
 ): Promise<Section> {
-  let classCode = generateCode();
-  let attempts = 0;
-  while (attempts < 10) {
-    const existing = await db.getFirstAsync<{ id: number }>(
-      'SELECT id FROM sections WHERE classCode = ?',
-      [classCode]
-    );
-    if (!existing) break;
-    classCode = generateCode();
-    attempts++;
-  }
-  const result = await db.runAsync(
-    'INSERT INTO sections (academicYearId, subjectId, teacherId, name, classCode) VALUES (?, ?, ?, ?, ?)',
-    [academicYearId, subjectId, teacherId, name, classCode]
-  );
-  return getSectionById(db, result.lastInsertRowId as number) as Promise<Section>;
+  const s = await Online.createSection(db, academicYearId, subjectId, teacherId, name);
+  await bust(cacheKey('sectionsByTeacher', teacherId), cacheKey('section'));
+  return s;
 }
 
-export async function getStudentsBySection(
-  db: SQLiteDatabase,
-  sectionId: number
-): Promise<Student[]> {
-  return db.getAllAsync<Student>(
-    `SELECT st.* FROM students st
-     JOIN enrollments e ON st.id = e.studentId
-     WHERE e.sectionId = ? AND e.status = 'active' AND st.status = 'active'
-     ORDER BY st.lastName, st.firstName`,
-    [sectionId]
-  );
+// ---------------------------------------------------------------------------
+// Students
+// ---------------------------------------------------------------------------
+export async function getStudentsBySection(db: Db, sectionId: number): Promise<Student[]> {
+  const key = cacheKey('studentsBySection', sectionId);
+  const cached = await readCached<Student[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getStudentsBySection(db, sectionId);
+  await writeCached(key, rows);
+  return rows;
 }
 
-export async function getStudentById(
-  db: SQLiteDatabase,
-  studentId: number
-): Promise<Student | null> {
-  return db.getFirstAsync<Student>(
-    'SELECT * FROM students WHERE id = ?',
-    [studentId]
-  );
+export async function getStudentById(db: Db, studentId: number): Promise<Student | null> {
+  const key = cacheKey('student', studentId);
+  const cached = await readCached<Student | null>(key);
+  if (cached !== null) return cached;
+  const s = await Online.getStudentById(db, studentId);
+  if (s) await writeCached(key, s);
+  return s;
+}
+
+export async function getStudentByUserId(db: Db, userId: number): Promise<Student | null> {
+  const key = cacheKey('studentByUserId', userId);
+  const cached = await readCached<Student | null>(key);
+  if (cached !== null) return cached;
+  const s = await Online.getStudentByUserId(db, userId);
+  if (s) await writeCached(key, s);
+  return s;
 }
 
 export async function createStudent(
-  db: SQLiteDatabase,
+  db: Db,
   studentNumber: string,
   firstName: string,
   middleName: string,
   lastName: string
 ): Promise<Student> {
-  const existing = await db.getFirstAsync<Student>(
-    'SELECT * FROM students WHERE studentNumber = ?',
-    [studentNumber]
-  );
-  if (existing) return existing;
-  const result = await db.runAsync(
-    'INSERT INTO students (studentNumber, firstName, middleName, lastName) VALUES (?, ?, ?, ?)',
-    [studentNumber, firstName, middleName, lastName]
-  );
-  return (await db.getFirstAsync<Student>(
-    'SELECT * FROM students WHERE id = ?',
-    [result.lastInsertRowId]
-  ))!;
-}
-
-export async function enrollStudent(
-  db: SQLiteDatabase,
-  studentId: number,
-  sectionId: number,
-  status: 'pending' | 'active' = 'active'
-): Promise<Enrollment> {
-  const existing = await db.getFirstAsync<Enrollment>(
-    'SELECT * FROM enrollments WHERE studentId = ? AND sectionId = ?',
-    [studentId, sectionId]
-  );
-  if (existing) return existing;
-  const result = await db.runAsync(
-    "INSERT INTO enrollments (studentId, sectionId, status, effectiveFrom) VALUES (?, ?, ?, date('now'))",
-    [studentId, sectionId, status]
-  );
-  return (await db.getFirstAsync<Enrollment>(
-    'SELECT * FROM enrollments WHERE id = ?',
-    [result.lastInsertRowId]
-  ))!;
-}
-
-export async function getEnrollmentRequests(
-  db: SQLiteDatabase,
-  sectionId: number
-): Promise<Enrollment[]> {
-  return db.getAllAsync<Enrollment>(
-    `SELECT e.*, st.firstName || ' ' || st.lastName as studentName, st.studentNumber
-     FROM enrollments e
-     JOIN students st ON e.studentId = st.id
-     WHERE e.sectionId = ? AND e.status = 'pending'
-     ORDER BY e.id`,
-    [sectionId]
-  );
-}
-
-export async function approveEnrollment(
-  db: SQLiteDatabase,
-  enrollmentId: number
-): Promise<void> {
-  await db.runAsync(
-    "UPDATE enrollments SET status = 'active', effectiveFrom = date('now') WHERE id = ?",
-    [enrollmentId]
-  );
-}
-
-export async function rejectEnrollment(
-  db: SQLiteDatabase,
-  enrollmentId: number
-): Promise<void> {
-  await db.runAsync('DELETE FROM enrollments WHERE id = ?', [enrollmentId]);
-}
-
-export async function approveAllEnrollments(
-  db: SQLiteDatabase,
-  sectionId: number
-): Promise<void> {
-  await db.runAsync(
-    "UPDATE enrollments SET status = 'active', effectiveFrom = date('now') WHERE sectionId = ? AND status = 'pending'",
-    [sectionId]
-  );
-}
-
-export async function getStudentSections(
-  db: SQLiteDatabase,
-  studentId: number
-): Promise<Section[]> {
-  return db.getAllAsync<Section>(
-    `SELECT s.*, ay.name as academicYearName, sub.name as subjectName, sub.code as subjectCode
-     FROM sections s
-     JOIN enrollments e ON s.id = e.sectionId
-     JOIN academic_years ay ON s.academicYearId = ay.id
-     JOIN subjects sub ON s.subjectId = sub.id
-     WHERE e.studentId = ? AND e.status = 'active' AND s.status = 'active'
-     ORDER BY ay.startDate DESC, sub.code`,
-    [studentId]
-  );
+  const s = await Online.createStudent(db, studentNumber, firstName, middleName, lastName);
+  await bust(cacheKey('studentsBySection'));
+  return s;
 }
 
 export async function registerStudent(
-  db: SQLiteDatabase,
+  db: Db,
   name: string,
   studentNumber: string,
   email: string,
   pin: string
 ): Promise<User> {
-  const names = name.trim().split(/\s+/);
-  const firstName = names[0] ?? name.trim();
-  const lastName = names.length > 1 ? names[names.length - 1] : name.trim();
-  const middleName = names.length > 2 ? names.slice(1, -1).join(' ') : '';
-
-  const existingStudent = await db.getFirstAsync<Student>(
-    'SELECT * FROM students WHERE studentNumber = ?',
-    [studentNumber]
-  );
-  if (existingStudent) {
-    throw new Error('A student with this student number already exists.');
-  }
-
-  let userId: number | undefined;
-  await db.withTransactionAsync(async () => {
-    const result = await db.runAsync(
-      'INSERT INTO users (name, email, pin, role) VALUES (?, ?, ?, ?)',
-      [name.trim(), email, pin, 'student']
-    );
-    userId = result.lastInsertRowId as number;
-
-    await db.runAsync(
-      `INSERT INTO students (userId, studentNumber, firstName, middleName, lastName)
-       VALUES (?, ?, ?, ?, ?)`,
-      [userId, studentNumber, firstName, middleName, lastName]
-    );
-  });
-  const user = await db.getFirstAsync<User>('SELECT * FROM users WHERE id = ?', [userId!]);
-  return user!;
+  return Online.registerStudent(db, name, studentNumber, email, pin);
 }
 
-export async function getStudentByUserId(
-  db: SQLiteDatabase,
-  userId: number
-): Promise<Student | null> {
-  return db.getFirstAsync<Student>(
-    'SELECT * FROM students WHERE userId = ?',
-    [userId]
-  );
-}
-
-export async function joinSectionByClassCode(
-  db: SQLiteDatabase,
+// ---------------------------------------------------------------------------
+// Enrollments
+// ---------------------------------------------------------------------------
+export async function enrollStudent(
+  db: Db,
   studentId: number,
-  classCode: string
-): Promise<{ section: Section; status: 'pending' | 'active' }> {
-  const section = await db.getFirstAsync<Section>(
-    `SELECT s.*, ay.name as academicYearName, sub.name as subjectName, sub.code as subjectCode,
-      (SELECT name FROM users u WHERE u.id = s.teacherId) as teacherName
-     FROM sections s
-     JOIN academic_years ay ON s.academicYearId = ay.id
-     JOIN subjects sub ON s.subjectId = sub.id
-     WHERE s.classCode = ? AND s.status = 'active'`,
-    [classCode.trim().toUpperCase()]
-  );
-  if (!section) {
-    throw new Error('Class code not found. Please check and try again.');
-  }
+  sectionId: number,
+  status: 'pending' | 'active' = 'active'
+): Promise<Enrollment> {
+  const e = await Online.enrollStudent(db, studentId, sectionId, status);
+  await bust(cacheKey('studentsBySection', sectionId), cacheKey('studentEnrollments', studentId));
+  return e;
+}
 
-  const existing = await db.getFirstAsync<Enrollment>(
-    'SELECT * FROM enrollments WHERE studentId = ? AND sectionId = ?',
-    [studentId, section.id]
-  );
-  if (existing) {
-    if (existing.status === 'active' || existing.status === 'approved') {
-      return { section, status: 'active' };
-    }
-    return { section, status: existing.status as 'pending' | 'active' };
-  }
+export async function getEnrollmentRequests(db: Db, sectionId: number): Promise<Enrollment[]> {
+  const key = cacheKey('enrollmentRequests', sectionId);
+  const cached = await readCached<Enrollment[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getEnrollmentRequests(db, sectionId);
+  await writeCached(key, rows);
+  return rows;
+}
 
-  const mode = section.enrollmentMode === 'auto' ? 'active' : 'pending';
-  await db.runAsync(
-    "INSERT INTO enrollments (studentId, sectionId, status, effectiveFrom) VALUES (?, ?, ?, date('now'))",
-    [studentId, section.id, mode]
-  );
-  return { section, status: mode };
+export async function approveEnrollment(db: Db, enrollmentId: number): Promise<void> {
+  await Online.approveEnrollment(db, enrollmentId);
+  await bust(cacheKey('enrollmentRequests'));
+}
+
+export async function rejectEnrollment(db: Db, enrollmentId: number): Promise<void> {
+  await Online.rejectEnrollment(db, enrollmentId);
+  await bust(cacheKey('enrollmentRequests'));
+}
+
+export async function approveAllEnrollments(db: Db, sectionId: number): Promise<void> {
+  await Online.approveAllEnrollments(db, sectionId);
+  await bust(cacheKey('enrollmentRequests'), cacheKey('studentsBySection', sectionId));
+}
+
+export async function getStudentSections(db: Db, studentId: number): Promise<Section[]> {
+  const key = cacheKey('studentSections', studentId);
+  const cached = await readCached<Section[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getStudentSections(db, studentId);
+  await writeCached(key, rows);
+  return rows;
 }
 
 export async function getStudentEnrollments(
-  db: SQLiteDatabase,
+  db: Db,
   studentId: number
 ): Promise<(Enrollment & { sectionName: string; subjectName: string; subjectCode: string })[]> {
-  return db.getAllAsync<Enrollment & { sectionName: string; subjectName: string; subjectCode: string }>(
-    `SELECT e.*, s.name as sectionName, sub.name as subjectName, sub.code as subjectCode
-     FROM enrollments e
-     JOIN sections s ON e.sectionId = s.id
-     JOIN subjects sub ON s.subjectId = sub.id
-     WHERE e.studentId = ?
-     ORDER BY e.id DESC`,
-    [studentId]
-  );
+  const key = cacheKey('studentEnrollments', studentId);
+  const cached = await readCached<(Enrollment & { sectionName: string; subjectName: string; subjectCode: string })[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getStudentEnrollments(db, studentId);
+  await writeCached(key, rows);
+  return rows;
 }
 
+export async function joinSectionByClassCode(
+  db: Db,
+  studentId: number,
+  classCode: string
+): Promise<{ section: Section; status: 'pending' | 'active' }> {
+  const r = await Online.joinSectionByClassCode(db, studentId, classCode);
+  await bust(cacheKey('studentSections', studentId), cacheKey('studentEnrollments', studentId));
+  return r;
+}
+
+// ---------------------------------------------------------------------------
+// Records
+// ---------------------------------------------------------------------------
 export async function createRecord(
-  db: SQLiteDatabase,
-  data: {
-    studentId: number;
-    sectionId: number;
-    category: RecordCategory;
-    recordType?: string;
-    title: string;
-    date: string;
-    score?: number | null;
-    totalScore?: number | null;
-    percentage?: number | null;
-    status?: string;
-    remarks?: string;
-    attendanceStatus?: string | null;
-    timeIn?: string | null;
-    timeOut?: string | null;
-    dueDate?: string | null;
-    createdBy: number;
-  }
+  db: Db,
+  data: Parameters<typeof Online.createRecord>[1]
 ): Promise<StudentRecord> {
-  const pct =
-    data.score != null && data.totalScore != null && data.totalScore > 0
-      ? (data.score / data.totalScore) * 100
-      : data.percentage ?? null;
-  const result = await db.runAsync(
-    `INSERT INTO records (studentId, sectionId, category, recordType, title, date, score, totalScore, percentage, status, remarks, attendanceStatus, timeIn, timeOut, dueDate, createdBy)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      data.studentId,
-      data.sectionId,
-      data.category,
-      data.recordType ?? '',
-      data.title,
-      data.date,
-      data.score ?? null,
-      data.totalScore ?? null,
-      pct,
-      data.status ?? 'draft',
-      data.remarks ?? '',
-      data.attendanceStatus ?? null,
-      data.timeIn ?? null,
-      data.timeOut ?? null,
-      data.dueDate ?? null,
-      data.createdBy,
-    ]
+  const r = await Online.createRecord(db, data);
+  await bust(
+    cacheKey('recordsBySection', data.sectionId),
+    cacheKey('recordsByStudentSection', data.studentId, data.sectionId)
   );
-  return (await db.getFirstAsync<StudentRecord>(
-    'SELECT * FROM records WHERE id = ?',
-    [result.lastInsertRowId]
-  ))!;
+  return r;
 }
 
 export async function createBulkRecords(
-  db: SQLiteDatabase,
-  records: Array<{
-    studentId: number;
-    sectionId: number;
-    category: RecordCategory;
-    recordType?: string;
-    title: string;
-    date: string;
-    score?: number | null;
-    totalScore?: number | null;
-    status?: string;
-    remarks?: string;
-    attendanceStatus?: string | null;
-    timeIn?: string | null;
-    timeOut?: string | null;
-    dueDate?: string | null;
-    createdBy: number;
-  }>
+  db: Db,
+  records: Parameters<typeof Online.createBulkRecords>[1]
 ): Promise<void> {
-  for (const data of records) {
-    const pct =
-      data.score != null && data.totalScore != null && data.totalScore > 0
-        ? (data.score / data.totalScore) * 100
-        : null;
-    await db.runAsync(
-      `INSERT INTO records (studentId, sectionId, category, recordType, title, date, score, totalScore, percentage, status, remarks, attendanceStatus, timeIn, timeOut, dueDate, createdBy)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        data.studentId,
-        data.sectionId,
-        data.category,
-        data.recordType ?? '',
-        data.title,
-        data.date,
-        data.score ?? null,
-        data.totalScore ?? null,
-        pct,
-        data.status ?? 'draft',
-        data.remarks ?? '',
-        data.attendanceStatus ?? null,
-        data.timeIn ?? null,
-        data.timeOut ?? null,
-        data.dueDate ?? null,
-        data.createdBy,
-      ]
-    );
-  }
+  await Online.createBulkRecords(db, records);
+  const sectionIds = [...new Set(records.map((r) => r.sectionId))];
+  await bust(...sectionIds.map((s) => cacheKey('recordsBySection', s)));
 }
 
 export async function getRecordsBySection(
-  db: SQLiteDatabase,
+  db: Db,
   sectionId: number,
   category?: RecordCategory
 ): Promise<StudentRecord[]> {
-  if (category) {
-    return db.getAllAsync<StudentRecord>(
-      `SELECT r.*, st.firstName || ' ' || st.lastName as studentName
-       FROM records r
-       JOIN students st ON r.studentId = st.id
-       WHERE r.sectionId = ? AND r.category = ?
-       ORDER BY r.date DESC, st.lastName`,
-      [sectionId, category]
-    );
-  }
-  return db.getAllAsync<StudentRecord>(
-    `SELECT r.*, st.firstName || ' ' || st.lastName as studentName
-     FROM records r
-     JOIN students st ON r.studentId = st.id
-     WHERE r.sectionId = ?
-     ORDER BY r.date DESC, st.lastName`,
-    [sectionId]
-  );
+  const key = cacheKey('recordsBySection', sectionId, category ?? '');
+  const cached = await readCached<StudentRecord[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getRecordsBySection(db, sectionId, category);
+  await writeCached(key, rows);
+  return rows;
 }
 
 export async function getRecordsByStudentAndSection(
-  db: SQLiteDatabase,
+  db: Db,
   studentId: number,
   sectionId: number
 ): Promise<StudentRecord[]> {
-  return db.getAllAsync<StudentRecord>(
-    'SELECT * FROM records WHERE studentId = ? AND sectionId = ? ORDER BY date DESC',
-    [studentId, sectionId]
-  );
+  const key = cacheKey('recordsByStudentSection', studentId, sectionId);
+  const cached = await readCached<StudentRecord[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getRecordsByStudentAndSection(db, studentId, sectionId);
+  await writeCached(key, rows);
+  return rows;
 }
 
-export async function getRecordById(
-  db: SQLiteDatabase,
-  recordId: number
-): Promise<StudentRecord | null> {
-  return db.getFirstAsync<StudentRecord>(
-    `SELECT r.*, st.firstName || ' ' || st.lastName as studentName
-     FROM records r
-     JOIN students st ON r.studentId = st.id
-     WHERE r.id = ?`,
-    [recordId]
-  );
+export async function getRecordById(db: Db, recordId: number): Promise<StudentRecord | null> {
+  const key = cacheKey('record', recordId);
+  const cached = await readCached<StudentRecord | null>(key);
+  if (cached !== null) return cached;
+  const r = await Online.getRecordById(db, recordId);
+  if (r) await writeCached(key, r);
+  return r;
 }
 
 export async function updateRecord(
-  db: SQLiteDatabase,
+  db: Db,
   id: number,
-  data: Partial<{
-    title: string;
-    score: number | null;
-    totalScore: number | null;
-    percentage: number | null;
-    status: string;
-    remarks: string;
-    attendanceStatus: string | null;
-    timeIn: string | null;
-    timeOut: string | null;
-    dueDate: string | null;
-    recordType: string;
-  }>
+  data: Parameters<typeof Online.updateRecord>[2]
 ): Promise<void> {
-  const fields: string[] = [];
-  const values: any[] = [];
-  for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) {
-      fields.push(`${key} = ?`);
-      values.push(value);
-    }
-  }
-  if (fields.length === 0) return;
-  fields.push("updatedAt = datetime('now')");
-  values.push(id);
-  await db.runAsync(`UPDATE records SET ${fields.join(', ')} WHERE id = ?`, values);
+  await Online.updateRecord(db, id, data);
+  await bust(cacheKey('record', id), cacheKey('recordsBySection'));
 }
 
 export async function signRecord(
-  db: SQLiteDatabase,
+  db: Db,
   recordId: number,
   userId: number,
   signatureData: string
 ): Promise<void> {
-  await db.runAsync(
-    "UPDATE records SET status = 'signed', signedBy = ?, signedAt = datetime('now'), signatureData = ? WHERE id = ?",
-    [userId, signatureData, recordId]
-  );
+  await Online.signRecord(db, recordId, userId, signatureData);
+  await bust(cacheKey('record', recordId), cacheKey('recordsBySection'));
 }
 
 export async function signBulkRecords(
-  db: SQLiteDatabase,
+  db: Db,
   recordIds: number[],
   userId: number,
   signatureData: string
 ): Promise<void> {
-  for (const id of recordIds) {
-    await signRecord(db, id, userId, signatureData);
-  }
+  await Online.signBulkRecords(db, recordIds, userId, signatureData);
+  await bust(cacheKey('recordsBySection'));
 }
 
 export async function getUnsignedRecords(
-  db: SQLiteDatabase,
+  db: Db,
   teacherId: number
 ): Promise<(StudentRecord & { studentName: string; sectionName: string })[]> {
-  return db.getAllAsync(
-    `SELECT r.*, st.firstName || ' ' || st.lastName as studentName, s.name as sectionName
-     FROM records r
-     JOIN students st ON r.studentId = st.id
-     JOIN sections s ON r.sectionId = s.id
-     WHERE r.createdBy = ? AND r.status = 'ready_to_sign'
-     ORDER BY r.date DESC`,
-    [teacherId]
-  );
-}
-
-export async function getRecordCountByCategory(
-  db: SQLiteDatabase,
-  studentId: number,
-  sectionId: number
-): Promise<Record<string, number>> {
-  const rows = await db.getAllAsync<{ category: string; count: number }>(
-    `SELECT category, COUNT(*) as count FROM records
-     WHERE studentId = ? AND sectionId = ? AND status IN ('signed', 'locked')
-     GROUP BY category`,
-    [studentId, sectionId]
-  );
-  const counts: Record<string, number> = {
-    ATTENDANCE: 0,
-    LABORATORY: 0,
-    QUIZ: 0,
-    EXAM: 0,
-    ASSIGNMENT: 0,
-  };
-  for (const row of rows) {
-    counts[row.category] = row.count;
-  }
-  return counts;
-}
-
-export async function getDashboardStats(
-  db: SQLiteDatabase,
-  teacherId: number,
-  academicYearId?: number
-) {
-  let sectionWhere = `WHERE s.teacherId = ? AND s.status = 'active'`;
-  const params: any[] = [teacherId];
-  if (academicYearId) {
-    sectionWhere += ` AND s.academicYearId = ?`;
-    params.push(academicYearId);
-  }
-
-  const sections = await db.getAllAsync<Section>(
-    `SELECT s.*, ay.name as academicYearName, sub.name as subjectName, sub.code as subjectCode,
-      (SELECT COUNT(*) FROM enrollments e WHERE e.sectionId = s.id AND e.status = 'active') as studentCount
-     FROM sections s
-     JOIN academic_years ay ON s.academicYearId = ay.id
-     JOIN subjects sub ON s.subjectId = sub.id
-     ${sectionWhere}
-     ORDER BY sub.code, s.name`,
-    params
-  );
-
-  const totalStudents = sections.reduce(
-    (sum, s) => sum + (s.studentCount ?? 0),
-    0
-  );
-
-  const unsignedRow = await db.getFirstAsync<{ count: number }>(
-    `SELECT COUNT(*) as count FROM records r
-     JOIN sections s ON r.sectionId = s.id
-     WHERE s.teacherId = ? AND r.status = 'ready_to_sign'`,
-    [teacherId]
-  );
-
-  const recentRecords = await db.getAllAsync<StudentRecord>(
-    `SELECT r.*, st.firstName || ' ' || st.lastName as studentName
-     FROM records r
-     JOIN students st ON r.studentId = st.id
-     JOIN sections s ON r.sectionId = s.id
-     WHERE s.teacherId = ?
-     ORDER BY r.createdAt DESC
-     LIMIT 10`,
-    [teacherId]
-  );
-
-  return {
-    sections,
-    totalStudents,
-    unsignedRecords: unsignedRow?.count ?? 0,
-    recentRecords,
-  };
-}
-
-export async function searchStudents(
-  db: SQLiteDatabase,
-  query: string,
-  sectionId?: number
-): Promise<(Student & { sectionNames?: string })[]> {
-  const q = `%${query}%`;
-  if (sectionId) {
-    return db.getAllAsync<Student & { sectionNames: string }>(
-      `SELECT st.*,
-        GROUP_CONCAT(s.name, ', ') as sectionNames
-       FROM students st
-       JOIN enrollments e ON st.id = e.studentId
-       JOIN sections s ON e.sectionId = s.id
-       WHERE e.sectionId = ? AND st.status = 'active'
-         AND (st.firstName LIKE ? OR st.lastName LIKE ? OR st.studentNumber LIKE ? OR (st.firstName || ' ' || st.lastName) LIKE ?)
-       GROUP BY st.id
-       ORDER BY st.lastName, st.firstName`,
-      [sectionId, q, q, q, q]
-    );
-  }
-  return db.getAllAsync<Student & { sectionNames: string }>(
-    `SELECT st.*,
-      GROUP_CONCAT(DISTINCT s.name, ', ') as sectionNames
-     FROM students st
-     LEFT JOIN enrollments e ON st.id = e.studentId AND e.status = 'active'
-     LEFT JOIN sections s ON e.sectionId = s.id
-     WHERE st.status = 'active'
-       AND (st.firstName LIKE ? OR st.lastName LIKE ? OR st.studentNumber LIKE ? OR (st.firstName || ' ' || st.lastName) LIKE ?)
-     GROUP BY st.id
-     ORDER BY st.lastName, st.firstName`,
-    [q, q, q, q]
-  );
+  const key = cacheKey('unsignedRecords', teacherId);
+  const cached = await readCached<(StudentRecord & { studentName: string; sectionName: string })[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getUnsignedRecords(db, teacherId);
+  await writeCached(key, rows);
+  return rows;
 }
 
 export async function getStudentTimeline(
-  db: SQLiteDatabase,
+  db: Db,
   studentId: number,
   filters?: { category?: RecordCategory; startDate?: string; endDate?: string }
 ): Promise<StudentRecord[]> {
-  let where = 'WHERE r.studentId = ?';
-  const params: any[] = [studentId];
-  if (filters?.category) {
-    where += ' AND r.category = ?';
-    params.push(filters.category);
+  const key = cacheKey('studentTimeline', studentId, filters ? hash(filters) : '');
+  const cached = await readCached<StudentRecord[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getStudentTimeline(db, studentId, filters);
+  await writeCached(key, rows);
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Aggregations (re-derive live; fall back to cached base rows when offline)
+// ---------------------------------------------------------------------------
+export async function getDashboardStats(
+  db: Db,
+  teacherId: number,
+  academicYearId?: number
+): Promise<Awaited<ReturnType<typeof Online.getDashboardStats>>> {
+  const cachedSections = await readCached<Section[]>(
+    cacheKey('sectionsByTeacher', teacherId, academicYearId ?? '')
+  );
+  try {
+    return await Online.getDashboardStats(db, teacherId, academicYearId);
+  } catch {
+    if (cachedSections) {
+      return {
+        sections: cachedSections,
+        totalStudents: cachedSections.reduce((s, x) => s + (x.studentCount ?? 0), 0),
+        unsignedRecords: 0,
+        recentRecords: [],
+      };
+    }
+    throw new Error('Offline: no cached dashboard data');
   }
-  if (filters?.startDate) {
-    where += ' AND r.date >= ?';
-    params.push(filters.startDate);
+}
+
+export async function searchStudents(
+  db: Db,
+  query: string,
+  sectionId?: number
+): Promise<(Student & { sectionNames?: string })[]> {
+  try {
+    return await Online.searchStudents(db, query, sectionId);
+  } catch {
+    const key = cacheKey('studentsBySection', sectionId ?? 'all');
+    const cached = await readCached<Student[]>(key);
+    if (cached) {
+      const q = query.toLowerCase();
+      return cached.filter((s) =>
+        `${s.firstName} ${s.lastName} ${s.studentNumber}`.toLowerCase().includes(q)
+      );
+    }
+    return [];
   }
-  if (filters?.endDate) {
-    where += ' AND r.date <= ?';
-    params.push(filters.endDate);
-  }
-  return db.getAllAsync<StudentRecord>(
-    `SELECT r.*, s.name as sectionName, sub.name as subjectName, sub.code as subjectCode
-     FROM records r
-     JOIN sections s ON r.sectionId = s.id
-     JOIN subjects sub ON s.subjectId = sub.id
-     ${where}
-     ORDER BY r.date DESC, r.createdAt DESC`,
-    params
+}
+
+// Derived summaries: try online; on failure recompute from cached base rows.
+function cachedByStudent(rows: StudentRecord[], studentId: number, sectionId?: number) {
+  return rows.filter(
+    (r) => r.studentId === studentId && (sectionId == null || r.sectionId === sectionId)
   );
 }
 
 export async function getStudentSummary(
-  db: SQLiteDatabase,
+  db: Db,
   studentId: number,
   sectionId?: number
-) {
-  let where = 'WHERE r.studentId = ?';
-  const params: any[] = [studentId];
-  if (sectionId) {
-    where += ' AND r.sectionId = ?';
-    params.push(sectionId);
+): Promise<Awaited<ReturnType<typeof Online.getStudentSummary>>> {
+  try {
+    return await Online.getStudentSummary(db, studentId, sectionId);
+  } catch {
+    const rows = await cachedRecordsForStudent(db, studentId, sectionId);
+    return summaryFromRecords(rows);
   }
-  const rows = await db.getAllAsync<{ category: string; count: number; avgScore: number | null; signedCount: number }>(
-    `SELECT category, COUNT(*) as count, AVG(percentage) as avgScore,
-      SUM(CASE WHEN status IN ('signed', 'locked') THEN 1 ELSE 0 END) as signedCount
-     FROM records r ${where}
-     GROUP BY category`,
-    params
-  );
-  const totalRow = await db.getFirstAsync<{ count: number; signedCount: number }>(
-    `SELECT COUNT(*) as count,
-      SUM(CASE WHEN status IN ('signed', 'locked') THEN 1 ELSE 0 END) as signedCount
-     FROM records r ${where}`,
-    params
-  );
-  return { byCategory: rows, total: totalRow };
 }
 
 export async function getSectionSummary(
-  db: SQLiteDatabase,
+  db: Db,
   sectionId: number
-) {
-  const studentCount = await db.getFirstAsync<{ count: number }>(
-    `SELECT COUNT(*) as count FROM enrollments WHERE sectionId = ? AND status = 'active'`,
-    [sectionId]
+): Promise<Awaited<ReturnType<typeof Online.getSectionSummary>>> {
+  try {
+    return await Online.getSectionSummary(db, sectionId);
+  } catch {
+    const rows =
+      (await readCached<StudentRecord[]>(cacheKey('recordsBySection', sectionId))) ?? [];
+    return summarizeSection(rows, sectionId, db);
+  }
+}
+
+// helpers (kept small)
+function hash(f: Record<string, any>): string {
+  let s = '';
+  for (const k of ['category', 'startDate', 'endDate']) if (f[k]) s += `${k}${f[k]}`;
+  return s;
+}
+
+async function cachedRecordsForStudent(
+  db: Db,
+  studentId: number,
+  sectionId?: number
+): Promise<StudentRecord[]> {
+  const direct = await readCached<StudentRecord[]>(
+    cacheKey('recordsByStudentSection', studentId, sectionId ?? '')
   );
-  const recordStats = await db.getAllAsync<{ category: string; count: number; avgScore: number | null; signedCount: number }>(
-    `SELECT category, COUNT(*) as count, AVG(percentage) as avgScore,
-      SUM(CASE WHEN status IN ('signed', 'locked') THEN 1 ELSE 0 END) as signedCount
-     FROM records WHERE sectionId = ?
-     GROUP BY category`,
-    [sectionId]
-  );
-  const totalRecords = await db.getFirstAsync<{ count: number; signedCount: number }>(
-    `SELECT COUNT(*) as count,
-      SUM(CASE WHEN status IN ('signed', 'locked') THEN 1 ELSE 0 END) as signedCount
-     FROM records WHERE sectionId = ?`,
-    [sectionId]
-  );
+  if (direct) return direct;
+  if (sectionId == null) {
+    const sections = await readCached<Section[]>(cacheKey('studentSections', studentId));
+    if (sections) {
+      const out: StudentRecord[] = [];
+      for (const s of sections) {
+        const r = await readCached<StudentRecord[]>(cacheKey('recordsByStudentSection', studentId, s.id));
+        if (r) out.push(...r);
+      }
+      return out;
+    }
+  }
+  return [];
+}
+
+function summaryFromRecords(rows: StudentRecord[]): Awaited<
+  ReturnType<typeof Online.getStudentSummary>
+> {
+  const map = new Map<string, { count: number; sum: number | null; signedCount: number }>();
+  for (const r of rows) {
+    const e = map.get(r.category) ?? { count: 0, sum: null as number | null, signedCount: 0 };
+    e.count += 1;
+    if (r.percentage != null) e.sum = (e.sum ?? 0) + r.percentage;
+    if (r.status === 'signed' || r.status === 'locked') e.signedCount += 1;
+    map.set(r.category, e);
+  }
+  const totalCount = rows.length;
   return {
-    studentCount: studentCount?.count ?? 0,
-    byCategory: recordStats,
-    total: totalRecords,
+    byCategory: [...map.entries()].map(([category, v]) => ({
+      category,
+      count: v.count,
+      avgScore: v.sum != null ? v.sum / v.count : null,
+      signedCount: v.signedCount,
+    })),
+    total: { count: totalCount, signedCount: rows.filter((r) => r.status === 'signed' || r.status === 'locked').length },
   };
 }
 
+async function summarizeSection(
+  rows: StudentRecord[],
+  sectionId: number,
+  db: Db
+): Promise<Awaited<ReturnType<typeof Online.getSectionSummary>>> {
+  const map = new Map<string, { count: number; sum: number | null; signedCount: number }>();
+  for (const r of rows) {
+    const e = map.get(r.category) ?? { count: 0, sum: null as number | null, signedCount: 0 };
+    e.count += 1;
+    if (r.percentage != null) e.sum = (e.sum ?? 0) + r.percentage;
+    if (r.status === 'signed' || r.status === 'locked') e.signedCount += 1;
+    map.set(r.category, e);
+  }
+  const students =
+    (await readCached<Student[]>(cacheKey('studentsBySection', sectionId))) ?? [];
+  return {
+    studentCount: students.length,
+    byCategory: [...map.entries()].map(([category, v]) => ({
+      category,
+      count: v.count,
+      avgScore: v.sum != null ? v.sum / v.count : null,
+      signedCount: v.signedCount,
+    })),
+    total: { count: rows.length, signedCount: rows.filter((r) => r.status === 'signed' || r.status === 'locked').length },
+  };
+}
+
+export async function getRecordCountByCategory(
+  db: Db,
+  studentId: number,
+  sectionId: number
+): Promise<Record<string, number>> {
+  try {
+    return await Online.getRecordCountByCategory(db, studentId, sectionId);
+  } catch {
+    const rows = (await readCached<StudentRecord[]>(
+      cacheKey('recordsByStudentSection', studentId, sectionId)
+    )) ?? [];
+    const counts: Record<string, number> = { ATTENDANCE: 0, LABORATORY: 0, QUIZ: 0, EXAM: 0, ASSIGNMENT: 0 };
+    for (const r of rows) {
+      if (counts[r.category] !== undefined && (r.status === 'signed' || r.status === 'locked')) {
+        counts[r.category] += 1;
+      }
+    }
+    return counts;
+  }
+}
+
 export async function getAttendanceSummary(
-  db: SQLiteDatabase,
+  db: Db,
   sectionId: number,
   startDate?: string,
   endDate?: string
-) {
-  let where = "WHERE r.sectionId = ? AND r.category = 'ATTENDANCE'";
-  const params: any[] = [sectionId];
-  if (startDate) {
-    where += ' AND r.date >= ?';
-    params.push(startDate);
+): Promise<Awaited<ReturnType<typeof Online.getAttendanceSummary>>> {
+  try {
+    const v = await Online.getAttendanceSummary(db, sectionId, startDate, endDate);
+    return v;
+  } catch {
+    const rows = (await readCached<StudentRecord[]>(cacheKey('recordsBySection', sectionId))) ?? [];
+    const overall = new Map<string, number>();
+    for (const r of rows) {
+      if (r.category !== 'ATTENDANCE') continue;
+      const st = r.attendanceStatus ?? 'Unknown';
+      overall.set(st, (overall.get(st) ?? 0) + 1);
+    }
+    return {
+      overall: [...overall.entries()].map(([attendanceStatus, count]) => ({ attendanceStatus, count })),
+      byStudent: [],
+    };
   }
-  if (endDate) {
-    where += ' AND r.date <= ?';
-    params.push(endDate);
+}
+
+async function summaryWrapper(
+  db: Db,
+  sectionId: number,
+  online: (db: Db, sectionId: number) => Promise<any>,
+  derive: (rows: StudentRecord[]) => any
+) {
+  try {
+    return await online(db, sectionId);
+  } catch {
+    const rows = (await readCached<StudentRecord[]>(cacheKey('recordsBySection', sectionId))) ?? [];
+    return derive(rows);
   }
-  const rows = await db.getAllAsync<{ attendanceStatus: string; count: number }>(
-    `SELECT r.attendanceStatus, COUNT(*) as count
-     FROM records r ${where}
-     GROUP BY r.attendanceStatus`,
-    params
-  );
-  const byStudent = await db.getAllAsync<{ studentId: number; studentName: string; present: number; absent: number; late: number; excused: number }>(
-    `SELECT r.studentId, st.firstName || ' ' || st.lastName as studentName,
-      SUM(CASE WHEN r.attendanceStatus = 'Present' THEN 1 ELSE 0 END) as present,
-      SUM(CASE WHEN r.attendanceStatus = 'Absent' THEN 1 ELSE 0 END) as absent,
-      SUM(CASE WHEN r.attendanceStatus = 'Late' THEN 1 ELSE 0 END) as late,
-      SUM(CASE WHEN r.attendanceStatus = 'Excused' THEN 1 ELSE 0 END) as excused
-     FROM records r
-     JOIN students st ON r.studentId = st.id
-     ${where}
-     GROUP BY r.studentId
-     ORDER BY st.lastName, st.firstName`,
-    params
-  );
-  return { overall: rows, byStudent };
 }
 
-export async function getQuizSummary(
-  db: SQLiteDatabase,
-  sectionId: number
-) {
-  const byStudent = await db.getAllAsync<{ studentId: number; studentName: string; count: number; avgScore: number | null; avgPercentage: number | null }>(
-    `SELECT r.studentId, st.firstName || ' ' || st.lastName as studentName,
-      COUNT(*) as count, AVG(r.score) as avgScore, AVG(r.percentage) as avgPercentage
-     FROM records r
-     JOIN students st ON r.studentId = st.id
-     WHERE r.sectionId = ? AND r.category = 'QUIZ'
-     GROUP BY r.studentId
-     ORDER BY st.lastName, st.firstName`,
-    [sectionId]
-  );
-  return { byStudent };
+export const getQuizSummary = (db: Db, sectionId: number) =>
+  summaryWrapper(db, sectionId, Online.getQuizSummary, (rows) => ({
+    byStudent: groupCounts(rows, 'QUIZ'),
+  }));
+
+export const getLabSummary = (db: Db, sectionId: number) =>
+  summaryWrapper(db, sectionId, Online.getLabSummary, (rows) => ({
+    byStudent: groupCounts(rows, 'LABORATORY'),
+  }));
+
+export const getExamSummary = (db: Db, sectionId: number) =>
+  summaryWrapper(db, sectionId, Online.getExamSummary, (rows) => ({
+    byStudent: groupCounts(rows, 'EXAM'),
+  }));
+
+export const getAssignmentSummary = (db: Db, sectionId: number) =>
+  summaryWrapper(db, sectionId, Online.getAssignmentSummary, (rows) => {
+    const byStudent: any[] = [];
+    // offline fallback: minimal
+    return { byStudent };
+  });
+
+function groupCounts(rows: StudentRecord[], category: RecordCategory) {
+  const map = new Map<number, { name: string; count: number; sumScore: number | null; sumPct: number | null }>();
+  for (const r of rows) {
+    if (r.category !== category) continue;
+    const e = map.get(r.studentId) ?? { name: r.remarks || `Student ${r.studentId}`, count: 0, sumScore: null, sumPct: null };
+    e.count += 1;
+    if (r.score != null) e.sumScore = (e.sumScore ?? 0) + r.score;
+    if (r.percentage != null) e.sumPct = (e.sumPct ?? 0) + r.percentage;
+    map.set(r.studentId, e);
+  }
+  return [...map.values()].map((r) => ({
+    studentId: 0,
+    studentName: r.name,
+    count: r.count,
+    avgScore: r.sumScore != null ? r.sumScore / r.count : null,
+    avgPercentage: r.sumPct != null ? r.sumPct / r.count : null,
+  }));
 }
 
-export async function getLabSummary(
-  db: SQLiteDatabase,
-  sectionId: number
-) {
-  const byStudent = await db.getAllAsync<{ studentId: number; studentName: string; count: number; avgScore: number | null; avgPercentage: number | null }>(
-    `SELECT r.studentId, st.firstName || ' ' || st.lastName as studentName,
-      COUNT(*) as count, AVG(r.score) as avgScore, AVG(r.percentage) as avgPercentage
-     FROM records r
-     JOIN students st ON r.studentId = st.id
-     WHERE r.sectionId = ? AND r.category = 'LABORATORY'
-     GROUP BY r.studentId
-     ORDER BY st.lastName, st.firstName`,
-    [sectionId]
-  );
-  return { byStudent };
-}
-
-export async function getExamSummary(
-  db: SQLiteDatabase,
-  sectionId: number
-) {
-  const byStudent = await db.getAllAsync<{ studentId: number; studentName: string; count: number; avgScore: number | null; avgPercentage: number | null }>(
-    `SELECT r.studentId, st.firstName || ' ' || st.lastName as studentName,
-      COUNT(*) as count, AVG(r.score) as avgScore, AVG(r.percentage) as avgPercentage
-     FROM records r
-     JOIN students st ON r.studentId = st.id
-     WHERE r.sectionId = ? AND r.category = 'EXAM'
-     GROUP BY r.studentId
-     ORDER BY st.lastName, st.firstName`,
-    [sectionId]
-  );
-  return { byStudent };
-}
-
-export async function getAssignmentSummary(
-  db: SQLiteDatabase,
-  sectionId: number
-) {
-  const byStudent = await db.getAllAsync<{ studentId: number; studentName: string; submitted: number; late: number; missing: number; excused: number; avgScore: number | null }>(
-    `SELECT r.studentId, st.firstName || ' ' || st.lastName as studentName,
-      SUM(CASE WHEN r.attendanceStatus = 'Submitted' THEN 1 ELSE 0 END) as submitted,
-      SUM(CASE WHEN r.attendanceStatus = 'Late' THEN 1 ELSE 0 END) as late,
-      SUM(CASE WHEN r.attendanceStatus = 'Missing' THEN 1 ELSE 0 END) as missing,
-      SUM(CASE WHEN r.attendanceStatus = 'Excused' THEN 1 ELSE 0 END) as excused,
-      AVG(r.percentage) as avgScore
-     FROM records r
-     JOIN students st ON r.studentId = st.id
-     WHERE r.sectionId = ? AND r.category = 'ASSIGNMENT'
-     GROUP BY r.studentId
-     ORDER BY st.lastName, st.firstName`,
-    [sectionId]
-  );
-  return { byStudent };
-}
-
+// ---------------------------------------------------------------------------
+// Audit Logs
+// ---------------------------------------------------------------------------
 export async function createAuditLog(
-  db: SQLiteDatabase,
+  db: Db,
   recordId: number | null,
   actorId: number,
   action: string,
@@ -999,18 +734,14 @@ export async function createAuditLog(
   newValue: string | null,
   reason: string
 ): Promise<void> {
-  await db.runAsync(
-    'INSERT INTO audit_logs (recordId, actorId, action, oldValue, newValue, reason) VALUES (?, ?, ?, ?, ?, ?)',
-    [recordId, actorId, action, oldValue, newValue, reason]
-  );
+  await Online.createAuditLog(db, recordId, actorId, action, oldValue, newValue, reason);
 }
 
-export async function getAuditLogs(
-  db: SQLiteDatabase,
-  recordId: number
-): Promise<AuditLog[]> {
-  return db.getAllAsync<AuditLog>(
-    'SELECT * FROM audit_logs WHERE recordId = ? ORDER BY timestamp DESC',
-    [recordId]
-  );
+export async function getAuditLogs(db: Db, recordId: number): Promise<AuditLog[]> {
+  const key = cacheKey('auditLogs', recordId);
+  const cached = await readCached<AuditLog[]>(key);
+  if (cached !== null) return cached;
+  const rows = await Online.getAuditLogs(db, recordId);
+  await writeCached(key, rows);
+  return rows;
 }

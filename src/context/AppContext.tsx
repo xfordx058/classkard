@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { SQLiteDatabase } from 'expo-sqlite';
-import { getDatabase, initializeDatabase } from '../db/database';
+import { supabase } from '../lib/supabase';
+import { initOffline } from '../db/queries';
 import { User } from '../types';
 
 interface AppContextType {
-  db: SQLiteDatabase | null;
+  db: typeof supabase;
   currentUser: User | null;
   isLoading: boolean;
   setCurrentUser: (user: User | null) => void;
@@ -12,7 +12,7 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType>({
-  db: null,
+  db: supabase,
   currentUser: null,
   isLoading: true,
   setCurrentUser: () => {},
@@ -20,34 +20,57 @@ const AppContext = createContext<AppContextType>({
 });
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [db, setDb] = useState<SQLiteDatabase | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    async function setup() {
-      const database = await getDatabase();
-      await initializeDatabase(database);
-      setDb(database);
+  const loadSessionUser = useCallback(async () => {
+    const { data } = await supabase.auth.getSession();
+    const authId = data.session?.user?.id;
+    if (!authId) {
+      setCurrentUser(null);
+      return;
+    }
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('auth_id', authId)
+      .maybeSingle();
+    if (user) {
+      setCurrentUser({
+        id: Number(user.id),
+        name: user.name ?? '',
+        email: user.email ?? '',
+        role: (user.role as User['role']) ?? 'teacher',
+        pin: '',
+        signatureData: user.signature_data ?? null,
+        status: user.status === 'inactive' ? 'inactive' : 'active',
+        createdAt: user.created_at ?? new Date().toISOString(),
+      });
+    } else {
+      setCurrentUser(null);
+    }
+  }, []);
 
-      const savedUser = await database.getFirstAsync<{ id: number; name: string; email: string; role: string; pin: string; signatureData: string | null; status: string; createdAt: string }>(
-        "SELECT * FROM users WHERE status = 'active' LIMIT 1"
-      );
-      if (savedUser) {
-        setCurrentUser(savedUser as User);
-      }
+  useEffect(() => {
+    initOffline();
+    async function setup() {
+      await loadSessionUser();
       setIsLoading(false);
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+        loadSessionUser();
+      });
+      return () => subscription.unsubscribe();
     }
     setup();
-  }, []);
+  }, [loadSessionUser]);
 
   const refreshDb = useCallback(async () => {
-    const database = await getDatabase();
-    setDb({ ...database } as SQLiteDatabase);
-  }, []);
+    await loadSessionUser();
+  }, [loadSessionUser]);
 
   return (
-    <AppContext.Provider value={{ db, currentUser, isLoading, setCurrentUser, refreshDb }}>
+    <AppContext.Provider value={{ db: supabase, currentUser, isLoading, setCurrentUser, refreshDb }}>
       {children}
     </AppContext.Provider>
   );

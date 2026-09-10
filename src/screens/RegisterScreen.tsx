@@ -33,8 +33,8 @@ export default function RegisterScreen() {
       Alert.alert('Error', 'Please fill in all fields.');
       return;
     }
-    if (pin.length < 4) {
-      Alert.alert('Error', 'PIN must be at least 4 digits.');
+    if (pin.length < 6) {
+      Alert.alert('Error', 'PIN must be at least 6 digits.');
       return;
     }
     if (pin !== confirmPin) {

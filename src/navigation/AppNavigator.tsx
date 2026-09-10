@@ -29,6 +29,7 @@ import ManageSubjectsScreen from '../screens/ManageSubjectsScreen';
 import StudentTimelineScreen from '../screens/StudentTimelineScreen';
 import StudentDashboardScreen from '../screens/StudentDashboardScreen';
 import JoinClassScreen from '../screens/JoinClassScreen';
+import EditSignatureScreen from '../screens/EditSignatureScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -98,6 +99,7 @@ function TeacherSettingsTab() {
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings', headerTitle: () => <BrandHeader /> }} />
       <Stack.Screen name="ManageAcademicYears" component={ManageAcademicYearsScreen} options={{ title: 'Academic Years' }} />
       <Stack.Screen name="ManageSubjects" component={ManageSubjectsScreen} options={{ title: 'Subjects' }} />
+      <Stack.Screen name="EditSignature" component={EditSignatureScreen} options={{ title: 'My Signature' }} />
     </Stack.Navigator>
   );
 }
@@ -195,6 +197,7 @@ function StudentSettingsTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+      <Stack.Screen name="EditSignature" component={EditSignatureScreen} options={{ title: 'My Signature' }} />
     </Stack.Navigator>
   );
 }
