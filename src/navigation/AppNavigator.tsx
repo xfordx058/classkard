@@ -4,7 +4,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { COLORS } from '../theme/colors';
-import BrandHeader from '../components/BrandHeader';
 
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -23,6 +22,7 @@ import SignatureScreen from '../screens/SignatureScreen';
 import CreateSectionScreen from '../screens/CreateSectionScreen';
 import QuickEntryScreen from '../screens/QuickEntryScreen';
 import SearchScreen from '../screens/SearchScreen';
+import ReportsScreen from '../screens/ReportsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ManageAcademicYearsScreen from '../screens/ManageAcademicYearsScreen';
 import ManageSubjectsScreen from '../screens/ManageSubjectsScreen';
@@ -53,8 +53,7 @@ function AuthStack() {
 function DashboardTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Dashboard', headerTitle: () => <BrandHeader /> }} />
-      <Stack.Screen name="UnsignedRecords" component={UnsignedRecordsScreen} options={{ title: 'Unsigned Records' }} />
+      <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Dashboard' }} />
     </Stack.Navigator>
   );
 }
@@ -62,17 +61,7 @@ function DashboardTab() {
 function ClassesTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="ClassesList" component={ClassesListScreen} options={{ title: 'Classes', headerTitle: () => <BrandHeader /> }} />
-      <Stack.Screen name="SectionDetail" component={SectionDetailScreen} options={{ title: 'Section Details' }} />
-      <Stack.Screen name="StudentProfile" component={StudentProfileScreen} options={{ title: 'Student Profile' }} />
-      <Stack.Screen name="CardDetail" component={CardDetailScreen} options={{ title: 'Card Details' }} />
-      <Stack.Screen name="AddRecord" component={AddRecordScreen} options={{ title: 'Add Record' }} />
-      <Stack.Screen name="Timeline" component={TimelineScreen} options={{ title: 'Timeline' }} />
-      <Stack.Screen name="EnrollmentRequests" component={EnrollmentRequestsScreen} options={{ title: 'Enrollment Requests' }} />
-      <Stack.Screen name="AddStudent" component={AddStudentScreen} options={{ title: 'Add Student' }} />
-      <Stack.Screen name="BulkScoreEntry" component={BulkScoreEntryScreen} options={{ title: 'Bulk Score Entry' }} />
-      <Stack.Screen name="Signature" component={SignatureScreen} options={{ title: 'Signature' }} />
-      <Stack.Screen name="CreateSection" component={CreateSectionScreen} options={{ title: 'Create Section' }} />
+      <Stack.Screen name="ClassesList" component={ClassesListScreen} options={{ title: 'Classes' }} />
     </Stack.Navigator>
   );
 }
@@ -80,7 +69,7 @@ function ClassesTab() {
 function QuickEntryTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="QuickEntry" component={QuickEntryScreen} options={{ title: 'Quick Entry', headerTitle: () => <BrandHeader /> }} />
+      <Stack.Screen name="QuickEntry" component={QuickEntryScreen} options={{ title: 'Quick Entry' }} />
     </Stack.Navigator>
   );
 }
@@ -88,7 +77,7 @@ function QuickEntryTab() {
 function SearchTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Search" component={SearchScreen} options={{ title: 'Search', headerTitle: () => <BrandHeader /> }} />
+      <Stack.Screen name="Search" component={SearchScreen} options={{ title: 'Search' }} />
     </Stack.Navigator>
   );
 }
@@ -96,10 +85,7 @@ function SearchTab() {
 function TeacherSettingsTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings', headerTitle: () => <BrandHeader /> }} />
-      <Stack.Screen name="ManageAcademicYears" component={ManageAcademicYearsScreen} options={{ title: 'Academic Years' }} />
-      <Stack.Screen name="ManageSubjects" component={ManageSubjectsScreen} options={{ title: 'Subjects' }} />
-      <Stack.Screen name="EditSignature" component={EditSignatureScreen} options={{ title: 'My Signature' }} />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
     </Stack.Navigator>
   );
 }
@@ -163,14 +149,35 @@ function TeacherTabs() {
   );
 }
 
+function TeacherRoot() {
+  return (
+    <Stack.Navigator screenOptions={screenOptions}>
+      <Stack.Screen name="MainTabs" component={TeacherTabs} options={{ headerShown: false }} />
+      <Stack.Screen name="UnsignedRecords" component={UnsignedRecordsScreen} options={{ title: 'Unsigned Records' }} />
+      <Stack.Screen name="QuickEntry" component={QuickEntryScreen} options={{ title: 'Quick Entry' }} />
+      <Stack.Screen name="Search" component={SearchScreen} options={{ title: 'Search' }} />
+      <Stack.Screen name="Reports" component={ReportsScreen} options={{ title: 'Reports' }} />
+      <Stack.Screen name="SectionDetail" component={SectionDetailScreen} options={{ title: 'Section Details' }} />
+      <Stack.Screen name="StudentProfile" component={StudentProfileScreen} options={{ title: 'Student Profile' }} />
+      <Stack.Screen name="CardDetail" component={CardDetailScreen} options={{ title: 'Card Details' }} />
+      <Stack.Screen name="AddRecord" component={AddRecordScreen} options={{ title: 'Add Record' }} />
+      <Stack.Screen name="Timeline" component={TimelineScreen} options={{ title: 'Timeline' }} />
+      <Stack.Screen name="EnrollmentRequests" component={EnrollmentRequestsScreen} options={{ title: 'Enrollment Requests' }} />
+      <Stack.Screen name="AddStudent" component={AddStudentScreen} options={{ title: 'Add Student' }} />
+      <Stack.Screen name="BulkScoreEntry" component={BulkScoreEntryScreen} options={{ title: 'Bulk Score Entry' }} />
+      <Stack.Screen name="Signature" component={SignatureScreen} options={{ title: 'Signature' }} />
+      <Stack.Screen name="CreateSection" component={CreateSectionScreen} options={{ title: 'Create Section' }} />
+      <Stack.Screen name="ManageAcademicYears" component={ManageAcademicYearsScreen} options={{ title: 'Academic Years' }} />
+      <Stack.Screen name="ManageSubjects" component={ManageSubjectsScreen} options={{ title: 'Subjects' }} />
+      <Stack.Screen name="EditSignature" component={EditSignatureScreen} options={{ title: 'My Signature' }} />
+    </Stack.Navigator>
+  );
+}
+
 function HomeTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="StudentDashboard" component={StudentDashboardScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="JoinClass" component={JoinClassScreen} options={{ title: 'Join a Class' }} />
-      <Stack.Screen name="StudentProfile" component={StudentProfileScreen} options={{ title: 'My Class' }} />
-      <Stack.Screen name="CardDetail" component={CardDetailScreen} options={{ title: 'Card Details' }} />
-      <Stack.Screen name="StudentTimeline" component={StudentTimelineScreen} options={{ title: 'Timeline' }} />
     </Stack.Navigator>
   );
 }
@@ -179,8 +186,6 @@ function MyCardsTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="StudentProfile" component={StudentProfileScreen} options={{ title: 'My Cards' }} />
-      <Stack.Screen name="CardDetail" component={CardDetailScreen} options={{ title: 'Card Details' }} />
-      <Stack.Screen name="StudentTimeline" component={StudentTimelineScreen} options={{ title: 'Timeline' }} />
     </Stack.Navigator>
   );
 }
@@ -197,7 +202,6 @@ function StudentSettingsTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
-      <Stack.Screen name="EditSignature" component={EditSignatureScreen} options={{ title: 'My Signature' }} />
     </Stack.Navigator>
   );
 }
@@ -253,6 +257,19 @@ function StudentTabs() {
   );
 }
 
+function StudentRoot() {
+  return (
+    <Stack.Navigator screenOptions={screenOptions}>
+      <Stack.Screen name="MainTabs" component={StudentTabs} options={{ headerShown: false }} />
+      <Stack.Screen name="JoinClass" component={JoinClassScreen} options={{ title: 'Join a Class' }} />
+      <Stack.Screen name="StudentProfile" component={StudentProfileScreen} options={{ title: 'My Cards' }} />
+      <Stack.Screen name="CardDetail" component={CardDetailScreen} options={{ title: 'Card Details' }} />
+      <Stack.Screen name="StudentTimeline" component={StudentTimelineScreen} options={{ title: 'Timeline' }} />
+      <Stack.Screen name="EditSignature" component={EditSignatureScreen} options={{ title: 'My Signature' }} />
+    </Stack.Navigator>
+  );
+}
+
 export default function AppNavigator() {
   const { currentUser } = useApp();
 
@@ -261,11 +278,11 @@ export default function AppNavigator() {
   }
 
   if (currentUser.role === 'teacher') {
-    return <TeacherTabs />;
+    return <TeacherRoot />;
   }
 
   if (currentUser.role === 'student') {
-    return <StudentTabs />;
+    return <StudentRoot />;
   }
 
   return <AuthStack />;

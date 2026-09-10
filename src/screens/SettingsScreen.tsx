@@ -55,6 +55,8 @@ export default function SettingsScreen() {
     );
   }
 
+  const isTeacher = currentUser?.role === 'teacher';
+
   const menuItems = [
     {
       icon: 'person',
@@ -62,18 +64,22 @@ export default function SettingsScreen() {
       color: COLORS.primary,
       onPress: () => Alert.alert('Edit Profile', 'Profile editing coming soon.'),
     },
-    {
-      icon: 'calendar',
-      label: 'Manage Academic Years',
-      color: COLORS.success,
-      onPress: () => navigation.navigate('ManageAcademicYears'),
-    },
-    {
-      icon: 'book',
-      label: 'Manage Subjects',
-      color: COLORS.info,
-      onPress: () => navigation.navigate('ManageSubjects'),
-    },
+    ...(isTeacher
+      ? [
+          {
+            icon: 'calendar',
+            label: 'Manage Academic Years',
+            color: COLORS.success,
+            onPress: () => navigation.navigate('ManageAcademicYears'),
+          },
+          {
+            icon: 'book',
+            label: 'Manage Subjects',
+            color: COLORS.info,
+            onPress: () => navigation.navigate('ManageSubjects'),
+          },
+        ]
+      : []),
     {
       icon: 'brush',
       label: 'My Signature',
