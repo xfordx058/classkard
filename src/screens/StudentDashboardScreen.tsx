@@ -14,6 +14,7 @@ import { useApp } from '../context/AppContext';
 import { getStudentByUserId, getStudentSections, getStudentEnrollments } from '../db/queries';
 import { COLORS } from '../theme/colors';
 import { Section, Enrollment } from '../types';
+import ErrorView from '../components/ErrorView';
 
 export default function StudentDashboardScreen() {
   const { db, currentUser } = useApp();
@@ -23,22 +24,30 @@ export default function StudentDashboardScreen() {
   const [studentId, setStudentId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!db || !currentUser) return;
-    const student = await getStudentByUserId(db, currentUser.id);
-    if (!student) {
+    setError(null);
+    try {
+      const student = await getStudentByUserId(db, currentUser.id);
+      if (!student) {
+        setSections([]);
+        setStudentId(null);
+        setLoading(false);
+        return;
+      }
+      setStudentId(student.id);
+      const secs = await getStudentSections(db, student.id);
+      setSections(secs);
+      const enrollments = await getStudentEnrollments(db, student.id);
+      setPendingCount(enrollments.filter((e) => e.status === 'pending').length);
+    } catch {
       setSections([]);
-      setStudentId(null);
+      setError('Could not load your dashboard.');
+    } finally {
       setLoading(false);
-      return;
     }
-    setStudentId(student.id);
-    const secs = await getStudentSections(db, student.id);
-    setSections(secs);
-    const enrollments = await getStudentEnrollments(db, student.id);
-    setPendingCount(enrollments.filter((e) => e.status === 'pending').length);
-    setLoading(false);
   }, [db, currentUser]);
 
   useFocusEffect(
@@ -58,6 +67,18 @@ export default function StudentDashboardScreen() {
       <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <ErrorView message={error} onRetry={loadData} />
+      </ScrollView>
     );
   }
 

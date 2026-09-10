@@ -13,6 +13,7 @@ import { useApp } from '../context/AppContext';
 import { getStudentById, getSectionById, getRecordCountByCategory, getStudentByUserId, getStudentSections } from '../db/queries';
 import { COLORS } from '../theme/colors';
 import { Student, Section, CARD_CONFIG } from '../types';
+import ErrorView from '../components/ErrorView';
 
 export default function StudentProfileScreen() {
   const { db, currentUser } = useApp();
@@ -24,6 +25,7 @@ export default function StudentProfileScreen() {
   const [section, setSection] = useState<Section | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -34,35 +36,49 @@ export default function StudentProfileScreen() {
   async function loadData() {
     if (!db) return;
     setLoading(true);
-    let st: Student | null = null;
-    if (studentId) {
-      st = await getStudentById(db, studentId);
-    }
-    if (!st && currentUser) {
-      st = await getStudentByUserId(db, currentUser.id);
-    }
-    setStudent(st);
+    setError(null);
+    try {
+      let st: Student | null = null;
+      if (studentId) {
+        st = await getStudentById(db, studentId);
+      }
+      if (!st && currentUser) {
+        st = await getStudentByUserId(db, currentUser.id);
+      }
+      setStudent(st);
 
-    let sec: Section | null = null;
-    if (sectionId) {
-      sec = await getSectionById(db, sectionId);
-    } else if (st) {
-      const stSections = await getStudentSections(db, st.id);
-      sec = stSections[0] ?? null;
-    }
-    setSection(sec);
+      let sec: Section | null = null;
+      if (sectionId) {
+        sec = await getSectionById(db, sectionId);
+      } else if (st) {
+        const stSections = await getStudentSections(db, st.id);
+        sec = stSections[0] ?? null;
+      }
+      setSection(sec);
 
-    if (st && sec) {
-      const c = await getRecordCountByCategory(db, st.id, sec.id);
-      setCounts(c);
+      if (st && sec) {
+        const c = await getRecordCountByCategory(db, st.id, sec.id);
+        setCounts(c);
+      }
+    } catch {
+      setError('Could not load this student profile.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <ErrorView message={error} onRetry={() => { setLoading(true); loadData(); }} />
       </View>
     );
   }

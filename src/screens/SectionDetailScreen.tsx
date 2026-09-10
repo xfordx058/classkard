@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -13,6 +14,8 @@ import { useApp } from '../context/AppContext';
 import { getSectionById, getStudentsBySection, getEnrollmentRequests } from '../db/queries';
 import { COLORS } from '../theme/colors';
 import { Section, Student, Enrollment } from '../types';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
 
 export default function SectionDetailScreen() {
   const { db } = useApp();
@@ -23,6 +26,9 @@ export default function SectionDetailScreen() {
   const [section, setSection] = useState<Section | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -30,14 +36,28 @@ export default function SectionDetailScreen() {
     }, [sectionId])
   );
 
-  async function loadData() {
+  async function loadData(refresh = false) {
     if (!db) return;
-    const sec = await getSectionById(db, sectionId);
-    setSection(sec);
-    const studs = await getStudentsBySection(db, sectionId);
-    setStudents(studs);
-    const pending = await getEnrollmentRequests(db, sectionId);
-    setPendingCount(pending.length);
+    refresh ? setRefreshing(true) : setLoading(true);
+    setError(null);
+    try {
+      const [sec, studs, pending] = await Promise.all([
+        getSectionById(db, sectionId),
+        getStudentsBySection(db, sectionId),
+        getEnrollmentRequests(db, sectionId),
+      ]);
+      setSection(sec);
+      setStudents(studs);
+      setPendingCount(pending.length);
+    } catch {
+      setError('Could not load this section.');
+      setSection(null);
+      setStudents([]);
+      setPendingCount(0);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }
 
   function renderStudent({ item, index }: { item: Student; index: number }) {
@@ -70,6 +90,15 @@ export default function SectionDetailScreen() {
 
   return (
     <View style={styles.container}>
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonList rows={2} height={120} />
+          <SkeletonList rows={5} height={68} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={() => loadData()} />
+      ) : (
+        <>
       {section && (
         <View style={styles.headerCard}>
           <View style={styles.headerTop}>
@@ -85,6 +114,8 @@ export default function SectionDetailScreen() {
               onPress={() => {
                 Alert.alert('Class Code', `Share this code with students:\n\n${section.classCode}`);
               }}
+              accessibilityRole="button"
+              accessibilityLabel={`Class code ${section.classCode}. Tap for info`}
             >
               <Ionicons name="information-circle" size={18} color="rgba(255,255,255,0.9)" />
             </TouchableOpacity>
@@ -96,6 +127,8 @@ export default function SectionDetailScreen() {
         <TouchableOpacity
           style={styles.actionBtn}
           onPress={() => navigation.navigate('AddStudent', { sectionId })}
+          accessibilityRole="button"
+          accessibilityLabel="Add student"
         >
           <Ionicons name="person-add" size={18} color={COLORS.primary} />
           <Text style={styles.actionBtnText}>Add Student</Text>
@@ -103,6 +136,8 @@ export default function SectionDetailScreen() {
         <TouchableOpacity
           style={styles.actionBtn}
           onPress={() => navigation.navigate('EnrollmentRequests', { sectionId })}
+          accessibilityRole="button"
+          accessibilityLabel={`Enrollment requests${pendingCount > 0 ? `, ${pendingCount} pending` : ''}`}
         >
           <Ionicons name="people-circle" size={18} color={COLORS.secondary} />
           <Text style={styles.actionBtnText}>
@@ -114,6 +149,8 @@ export default function SectionDetailScreen() {
           onPress={() =>
             navigation.navigate('QuickEntry', { sectionId })
           }
+          accessibilityRole="button"
+          accessibilityLabel="Quick entry"
         >
           <Ionicons name="flash" size={18} color={COLORS.success} />
           <Text style={styles.actionBtnText}>Quick Entry</Text>
@@ -129,6 +166,9 @@ export default function SectionDetailScreen() {
         keyExtractor={(item) => String(item.id)}
         renderItem={renderStudent}
         contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} tintColor={COLORS.primary} />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="people-outline" size={40} color={COLORS.textLight} />
@@ -139,6 +179,8 @@ export default function SectionDetailScreen() {
           </View>
         }
       />
+        </>
+      )}
     </View>
   );
 }

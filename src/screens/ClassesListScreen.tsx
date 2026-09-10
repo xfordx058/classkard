@@ -5,6 +5,7 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -12,11 +13,17 @@ import { useApp } from '../context/AppContext';
 import { getSectionsByTeacher } from '../db/queries';
 import { COLORS } from '../theme/colors';
 import { Section } from '../types';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
+import Fab from '../components/Fab';
 
 export default function ClassesListScreen() {
   const { db, currentUser } = useApp();
   const navigation = useNavigation<any>();
   const [sections, setSections] = useState<Section[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -24,10 +31,20 @@ export default function ClassesListScreen() {
     }, [currentUser])
   );
 
-  async function loadSections() {
+  async function loadSections(refresh = false) {
     if (!db || !currentUser) return;
-    const data = await getSectionsByTeacher(db, currentUser.id);
-    setSections(data);
+    refresh ? setRefreshing(true) : setLoading(true);
+    setError(null);
+    try {
+      const data = await getSectionsByTeacher(db, currentUser.id);
+      setSections(data);
+    } catch {
+      setError('Could not load your sections.');
+      setSections([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }
 
   function renderSection({ item }: { item: Section }) {
@@ -61,27 +78,33 @@ export default function ClassesListScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={sections}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderSection}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="school-outline" size={48} color={COLORS.textLight} />
-            <Text style={styles.emptyTitle}>No Sections Yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Create your first section to start managing your classes
-            </Text>
-          </View>
-        }
-      />
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => navigation.navigate('CreateSection')}
-      >
-        <Ionicons name="add" size={28} color={COLORS.white} />
-      </TouchableOpacity>
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonList rows={4} height={128} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={() => loadSections()} />
+      ) : (
+        <FlatList
+          data={sections}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderSection}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => loadSections(true)} tintColor={COLORS.primary} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="school-outline" size={48} color={COLORS.textLight} />
+              <Text style={styles.emptyTitle}>No Sections Yet</Text>
+              <Text style={styles.emptySubtitle}>
+                Create your first section to start managing your classes
+              </Text>
+            </View>
+          }
+        />
+      )}
+      <Fab onPress={() => navigation.navigate('CreateSection')} label="Create section" />
     </View>
   );
 }
@@ -184,21 +207,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     paddingHorizontal: 40,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 6,
   },
 });

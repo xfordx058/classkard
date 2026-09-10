@@ -17,6 +17,8 @@ import {
 } from '../db/queries';
 import { COLORS, CATEGORY_COLORS } from '../theme/colors';
 import { Section } from '../types';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
 
 const REPORT_ITEMS = [
   { key: 'student', title: 'Student Summary', icon: 'person', color: COLORS.primary },
@@ -36,6 +38,8 @@ export default function ReportsScreen() {
   const [selectedSection, setSelectedSection] = useState<Section | null>(null);
   const [summaryData, setSummaryData] = useState<any>(null);
   const [unsignedCount, setUnsignedCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -45,14 +49,22 @@ export default function ReportsScreen() {
 
   async function loadData() {
     if (!db || !currentUser) return;
-    const ay = await getActiveAcademicYear(db);
-    const secs = await getSectionsByTeacher(db, currentUser.id, ay?.id);
-    setSections(secs);
-    if (secs.length > 0 && !selectedSection) {
-      setSelectedSection(secs[0]);
+    setLoading(true);
+    setError(null);
+    try {
+      const ay = await getActiveAcademicYear(db);
+      const secs = await getSectionsByTeacher(db, currentUser.id, ay?.id);
+      setSections(secs);
+      if (secs.length > 0 && !selectedSection) {
+        setSelectedSection(secs[0]);
+      }
+      const stats = await getDashboardStats(db, currentUser.id, ay?.id);
+      setUnsignedCount(stats.unsignedRecords);
+    } catch {
+      setError('Could not load reports.');
+    } finally {
+      setLoading(false);
     }
-    const stats = await getDashboardStats(db, currentUser.id, ay?.id);
-    setUnsignedCount(stats.unsignedRecords);
   }
 
   function renderReportItem(item: typeof REPORT_ITEMS[0]) {
@@ -89,6 +101,18 @@ export default function ReportsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {loading ? (
+        <View style={styles.loadingBlock}>
+          <SkeletonList rows={6} height={64} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={() => { setLoading(true); loadData(); }} />
+      ) : sections.length === 0 ? (
+        <Text style={styles.noSections}>
+          Create a section to view reports.
+        </Text>
+      ) : (
+        <>
       <View style={styles.sectionSelector}>
         <Text style={styles.selectorLabel}>Active Section:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -101,6 +125,9 @@ export default function ReportsScreen() {
                   selectedSection?.id === sec.id && styles.chipActive,
                 ]}
                 onPress={() => setSelectedSection(sec)}
+                accessibilityRole="button"
+                accessibilityLabel={`Select ${sec.subjectCode} ${sec.name}`}
+                accessibilityState={{ selected: selectedSection?.id === sec.id }}
               >
                 <Text
                   style={[
@@ -118,6 +145,8 @@ export default function ReportsScreen() {
 
       <Text style={styles.sectionTitle}>Available Reports</Text>
       {REPORT_ITEMS.map((item) => renderReportItem(item))}
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -130,6 +159,15 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 32,
+  },
+  loadingBlock: {
+    paddingTop: 8,
+  },
+  noSections: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingTop: 80,
   },
   sectionSelector: {
     marginBottom: 20,

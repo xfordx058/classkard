@@ -14,11 +14,15 @@ import { useApp } from '../context/AppContext';
 import { getStudentsBySection, getSectionById, createBulkRecords } from '../db/queries';
 import { COLORS, CATEGORY_COLORS } from '../theme/colors';
 import { Student, Section, RecordCategory } from '../types';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
+import { useToast } from '../components/Toast';
 
 export default function BulkScoreEntryScreen() {
   const { db, currentUser } = useApp();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { toast } = useToast();
   const { sectionId, category, title, date } = route.params as {
     sectionId: number;
     category: RecordCategory;
@@ -30,6 +34,8 @@ export default function BulkScoreEntryScreen() {
   const [section, setSection] = useState<Section | null>(null);
   const [scores, setScores] = useState<Record<number, { score: string; total: string }>>({});
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -39,15 +45,25 @@ export default function BulkScoreEntryScreen() {
 
   async function loadData() {
     if (!db) return;
-    const sec = await getSectionById(db, sectionId);
-    setSection(sec);
-    const studs = await getStudentsBySection(db, sectionId);
-    setStudents(studs);
-    const init: Record<number, { score: string; total: string }> = {};
-    studs.forEach((s) => {
-      init[s.id] = { score: '', total: '100' };
-    });
-    setScores(init);
+    setLoading(true);
+    setError(null);
+    try {
+      const sec = await getSectionById(db, sectionId);
+      setSection(sec);
+      const studs = await getStudentsBySection(db, sectionId);
+      setStudents(studs);
+      const init: Record<number, { score: string; total: string }> = {};
+      studs.forEach((s) => {
+        init[s.id] = { score: '', total: '100' };
+      });
+      setScores(init);
+    } catch {
+      setError('Could not load students.');
+      setStudents([]);
+      setSection(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function updateScore(studentId: number, field: 'score' | 'total', value: string) {
@@ -85,6 +101,7 @@ export default function BulkScoreEntryScreen() {
         `${records.length} records ${status === 'ready_to_sign' ? 'saved and ready to sign' : 'saved as draft'}.`,
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
+      toast('success', `${records.length} records saved`);
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Failed to save records.');
     } finally {
@@ -113,7 +130,14 @@ export default function BulkScoreEntryScreen() {
         <Text style={[styles.colHeader, styles.colTotal]}>Total</Text>
       </View>
 
-      <FlatList
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonList rows={6} height={56} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={() => { setLoading(true); loadData(); }} />
+      ) : (
+        <FlatList
         data={students}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
@@ -145,6 +169,7 @@ export default function BulkScoreEntryScreen() {
           </View>
         )}
       />
+      )}
 
       <View style={styles.bottomActions}>
         <TouchableOpacity

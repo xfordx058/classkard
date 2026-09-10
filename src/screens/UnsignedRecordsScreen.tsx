@@ -5,17 +5,23 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useApp } from '../context/AppContext';
 import { getUnsignedRecords } from '../db/queries';
 import { COLORS, CATEGORY_COLORS } from '../theme/colors';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
 
 export default function UnsignedRecordsScreen() {
   const { db, currentUser } = useApp();
   const navigation = useNavigation<any>();
   const [records, setRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -23,10 +29,20 @@ export default function UnsignedRecordsScreen() {
     }, [])
   );
 
-  async function loadRecords() {
+  async function loadRecords(refresh = false) {
     if (!db || !currentUser) return;
-    const data = await getUnsignedRecords(db, currentUser.id);
-    setRecords(data);
+    refresh ? setRefreshing(true) : setLoading(true);
+    setError(null);
+    try {
+      const data = await getUnsignedRecords(db, currentUser.id);
+      setRecords(data);
+    } catch {
+      setError('Could not load unsigned records.');
+      setRecords([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }
 
   function renderRecord({ item }: { item: any }) {
@@ -62,19 +78,30 @@ export default function UnsignedRecordsScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={records}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderRecord}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="checkmark-done-circle-outline" size={48} color={COLORS.success} />
-            <Text style={styles.emptyText}>All caught up!</Text>
-            <Text style={styles.emptySubtext}>No records waiting to be signed</Text>
-          </View>
-        }
-      />
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonList rows={5} height={76} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={() => loadRecords()} />
+      ) : (
+        <FlatList
+          data={records}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderRecord}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => loadRecords(true)} tintColor={COLORS.primary} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="checkmark-done-circle-outline" size={48} color={COLORS.success} />
+              <Text style={styles.emptyText}>All caught up!</Text>
+              <Text style={styles.emptySubtext}>No records waiting to be signed</Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }

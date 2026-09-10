@@ -14,6 +14,8 @@ import { useApp } from '../context/AppContext';
 import { getAcademicYears, getSubjects, createSection } from '../db/queries';
 import { COLORS } from '../theme/colors';
 import { AcademicYear, Subject } from '../types';
+import Skeleton from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
 
 export default function CreateSectionScreen() {
   const { db, currentUser } = useApp();
@@ -25,6 +27,8 @@ export default function CreateSectionScreen() {
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [sectionName, setSectionName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -34,12 +38,20 @@ export default function CreateSectionScreen() {
 
   async function loadData() {
     if (!db) return;
-    const years = await getAcademicYears(db);
-    setAcademicYears(years);
-    const active = years.find((y) => y.status === 'active');
-    if (active) setSelectedYear(active);
-    const subs = await getSubjects(db);
-    setSubjects(subs);
+    setLoading(true);
+    setError(null);
+    try {
+      const years = await getAcademicYears(db);
+      setAcademicYears(years);
+      const active = years.find((y) => y.status === 'active');
+      if (active) setSelectedYear(active);
+      const subs = await getSubjects(db);
+      setSubjects(subs);
+    } catch {
+      setError('Could not load options for creating a section.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleCreate() {
@@ -79,6 +91,16 @@ export default function CreateSectionScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {loading ? (
+        <View style={styles.loadingBlock}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} height={i === 2 ? 64 : 96} radius={14} style={{ marginBottom: 16 }} />
+          ))}
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={() => { setLoading(true); loadData(); }} />
+      ) : (
+        <>
       <View style={styles.headerCard}>
         <Ionicons name="add-circle" size={28} color={COLORS.white} />
         <Text style={styles.headerTitle}>Create New Section</Text>
@@ -156,12 +178,16 @@ export default function CreateSectionScreen() {
         style={[styles.createButton, creating && { opacity: 0.5 }]}
         onPress={handleCreate}
         disabled={creating}
+        accessibilityRole="button"
+        accessibilityLabel="Create section"
       >
         <Ionicons name="add-circle" size={20} color={COLORS.white} />
         <Text style={styles.createButtonText}>
           {creating ? 'Creating...' : 'Create Section'}
         </Text>
       </TouchableOpacity>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -174,6 +200,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 40,
+  },
+  loadingBlock: {
+    paddingTop: 8,
   },
   headerCard: {
     backgroundColor: COLORS.primary,

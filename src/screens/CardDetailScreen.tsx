@@ -12,6 +12,9 @@ import { useApp } from '../context/AppContext';
 import { getRecordsByStudentAndSection } from '../db/queries';
 import { COLORS, CATEGORY_COLORS, STATUS_COLORS } from '../theme/colors';
 import { StudentRecord, RecordCategory } from '../types';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
+import Fab from '../components/Fab';
 
 const CATEGORY_LABELS: Record<RecordCategory, string> = {
   ATTENDANCE: 'Attendance',
@@ -29,6 +32,8 @@ export default function CardDetailScreen() {
   const isTeacher = currentUser?.role === 'teacher';
 
   const [records, setRecords] = useState<StudentRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -38,11 +43,20 @@ export default function CardDetailScreen() {
 
   async function loadRecords() {
     if (!db) return;
-    const allRecords = await getRecordsByStudentAndSection(db, studentId, sectionId);
-    const filtered = category
-      ? allRecords.filter((r) => r.category === category)
-      : allRecords;
-    setRecords(filtered);
+    setLoading(true);
+    setError(null);
+    try {
+      const allRecords = await getRecordsByStudentAndSection(db, studentId, sectionId);
+      const filtered = category
+        ? allRecords.filter((r) => r.category === category)
+        : allRecords;
+      setRecords(filtered);
+    } catch {
+      setError('Could not load records.');
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function getStatusLabel(status: string) {
@@ -117,22 +131,29 @@ export default function CardDetailScreen() {
         <Text style={styles.headerCount}>{records.length} records</Text>
       </View>
 
-      <FlatList
-        data={records}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderRecord}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="document-outline" size={40} color={COLORS.textLight} />
-            <Text style={styles.emptyText}>No records yet</Text>
-          </View>
-        }
-      />
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonList rows={5} height={80} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={loadRecords} />
+      ) : (
+        <FlatList
+          data={records}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderRecord}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="document-outline" size={40} color={COLORS.textLight} />
+              <Text style={styles.emptyText}>No records yet</Text>
+            </View>
+          }
+        />
+      )}
 
       {isTeacher && (
-        <TouchableOpacity
-          style={styles.fab}
+        <Fab
           onPress={() =>
             navigation.navigate('AddRecord', {
               sectionId,
@@ -140,9 +161,8 @@ export default function CardDetailScreen() {
               category,
             })
           }
-        >
-          <Ionicons name="add" size={28} color={COLORS.white} />
-        </TouchableOpacity>
+          label="Add record"
+        />
       )}
     </View>
   );
@@ -270,21 +290,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textSecondary,
     marginTop: 12,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 6,
   },
 });

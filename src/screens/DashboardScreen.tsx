@@ -13,11 +13,15 @@ import { useApp } from '../context/AppContext';
 import { getDashboardStats, getActiveAcademicYear } from '../db/queries';
 import { COLORS, CATEGORY_COLORS } from '../theme/colors';
 import { Section, StudentRecord } from '../types';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
 
 export default function DashboardScreen() {
   const { db, currentUser } = useApp();
   const navigation = useNavigation<any>();
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [totalStudents, setTotalStudents] = useState(0);
   const [unsignedRecords, setUnsignedRecords] = useState(0);
@@ -26,6 +30,7 @@ export default function DashboardScreen() {
 
   async function loadData() {
     if (!db || !currentUser) return;
+    setError(null);
     try {
       const ay = await getActiveAcademicYear(db);
       setAcademicYear(ay?.name ?? 'No active year');
@@ -35,7 +40,10 @@ export default function DashboardScreen() {
       setUnsignedRecords(stats.unsignedRecords);
       setRecentRecords(stats.recentRecords);
     } catch (e) {
+      setError('Could not load your dashboard.');
       console.error('Dashboard load error:', e);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -75,6 +83,17 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {error && sections.length === 0 ? (
+        <ErrorView message={error} onRetry={() => { setLoading(true); loadData(); }} />
+      ) : (
+        <>
+      {loading ? (
+        <View style={styles.loadingBlock}>
+          <SkeletonList rows={3} height={96} />
+          <SkeletonList rows={2} height={60} />
+        </View>
+      ) : (
+        <>
       <View style={styles.statsRow}>
         <View style={[styles.statCard, { backgroundColor: '#DCFCE7' }]}>
           <Ionicons name="people" size={24} color={COLORS.primary} />
@@ -207,6 +226,10 @@ export default function DashboardScreen() {
           ))}
         </>
       )}
+        </>
+      )}
+      </>
+      )}
     </ScrollView>
   );
 }
@@ -219,6 +242,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 32,
+  },
+  loadingBlock: {
+    gap: 24,
   },
   header: {
     flexDirection: 'row',

@@ -17,9 +17,14 @@ import { useApp } from '../context/AppContext';
 import { getSubjects, createSubject, updateSubject, deleteSubject } from '../db/queries';
 import { COLORS } from '../theme/colors';
 import { Subject } from '../types';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
+import Fab from '../components/Fab';
+import { useToast } from '../components/Toast';
 
 export default function ManageSubjectsScreen() {
   const { db } = useApp();
+  const { toast } = useToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
@@ -27,6 +32,8 @@ export default function ManageSubjectsScreen() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -36,8 +43,17 @@ export default function ManageSubjectsScreen() {
 
   async function loadSubjects() {
     if (!db) return;
-    const data = await getSubjects(db);
-    setSubjects(data);
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getSubjects(db);
+      setSubjects(data);
+    } catch {
+      setError('Could not load subjects.');
+      setSubjects([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function openCreate() {
@@ -59,7 +75,7 @@ export default function ManageSubjectsScreen() {
   async function handleSave() {
     if (!db) return;
     if (!code.trim() || !name.trim()) {
-      Alert.alert('Error', 'Subject code and name are required.');
+      toast('warning', 'Subject code and name are required.');
       return;
     }
     setSaving(true);
@@ -70,9 +86,10 @@ export default function ManageSubjectsScreen() {
         await createSubject(db, code.trim(), name.trim(), description.trim());
       }
       setModalVisible(false);
+      toast('success', editingSubject ? 'Subject updated' : 'Subject created');
       await loadSubjects();
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Failed to save subject.');
+      toast('error', e.message ?? 'Failed to save subject.');
     } finally {
       setSaving(false);
     }
@@ -88,9 +105,10 @@ export default function ManageSubjectsScreen() {
         onPress: async () => {
           try {
             await deleteSubject(db, subject.id);
+            toast('info', 'Subject deleted');
             await loadSubjects();
           } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'Failed to delete.');
+            toast('error', e.message ?? 'Failed to delete.');
           }
         },
       },
@@ -99,44 +117,58 @@ export default function ManageSubjectsScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={subjects}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <View style={styles.subjectCard}>
-            <View style={styles.subjectIcon}>
-              <Text style={styles.subjectCode}>{item.code}</Text>
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonList rows={5} height={72} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={loadSubjects} />
+      ) : (
+        <FlatList
+          data={subjects}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <View style={styles.subjectCard}>
+              <View style={styles.subjectIcon}>
+                <Text style={styles.subjectCode}>{item.code}</Text>
+              </View>
+              <View style={styles.subjectInfo}>
+                <Text style={styles.subjectName}>{item.name}</Text>
+                {item.description ? (
+                  <Text style={styles.subjectDesc} numberOfLines={1}>
+                    {item.description}
+                  </Text>
+                ) : null}
+              </View>
+              <View style={styles.subjectActions}>
+                <TouchableOpacity
+                  onPress={() => openEdit(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${item.name}`}
+                >
+                  <Ionicons name="pencil" size={18} color={COLORS.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleDelete(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete ${item.name}`}
+                >
+                  <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.subjectInfo}>
-              <Text style={styles.subjectName}>{item.name}</Text>
-              {item.description ? (
-                <Text style={styles.subjectDesc} numberOfLines={1}>
-                  {item.description}
-                </Text>
-              ) : null}
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="book-outline" size={40} color={COLORS.textLight} />
+              <Text style={styles.emptyText}>No subjects yet</Text>
             </View>
-            <View style={styles.subjectActions}>
-              <TouchableOpacity onPress={() => openEdit(item)}>
-                <Ionicons name="pencil" size={18} color={COLORS.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDelete(item)}>
-                <Ionicons name="trash-outline" size={18} color={COLORS.error} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="book-outline" size={40} color={COLORS.textLight} />
-            <Text style={styles.emptyText}>No subjects yet</Text>
-          </View>
-        }
-      />
+          }
+        />
+      )}
 
-      <TouchableOpacity style={styles.fab} onPress={openCreate}>
-        <Ionicons name="add" size={28} color={COLORS.white} />
-      </TouchableOpacity>
+      <Fab onPress={openCreate} label="Add subject" />
 
       <Modal visible={modalVisible} animationType="slide" transparent>
         <KeyboardAvoidingView
@@ -263,18 +295,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textSecondary,
     marginTop: 12,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 6,
   },
   modalOverlay: {
     flex: 1,

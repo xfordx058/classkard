@@ -13,10 +13,22 @@ import { useApp } from '../context/AppContext';
 import { clearDatabase } from '../db/database';
 import { supabase } from '../lib/supabase';
 import { COLORS } from '../theme/colors';
+import { useToast } from '../components/Toast';
 
 export default function SettingsScreen() {
   const { currentUser, setCurrentUser, refreshDb } = useApp();
   const navigation = useNavigation<any>();
+  const { toast } = useToast();
+
+  async function doSignOut() {
+    try {
+      await supabase.auth.signOut();
+      setCurrentUser(null);
+      toast('info', 'Signed out');
+    } catch (e: any) {
+      toast('error', e?.message ?? 'Failed to sign out.');
+    }
+  }
 
   function handleLogout() {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -24,10 +36,7 @@ export default function SettingsScreen() {
       {
         text: 'Logout',
         style: 'destructive',
-        onPress: async () => {
-          await supabase.auth.signOut();
-          setCurrentUser(null);
-        },
+        onPress: doSignOut,
       },
     ]);
   }
@@ -46,6 +55,7 @@ export default function SettingsScreen() {
               await clearDatabase();
               await refreshDb();
               setCurrentUser(null);
+              toast('info', 'Local data cleared');
             } catch (e: any) {
               Alert.alert('Error', e.message ?? 'Failed to clear data.');
             }
@@ -134,6 +144,8 @@ export default function SettingsScreen() {
           key={item.label}
           style={[styles.menuItem, index === menuItems.length - 1 && styles.menuItemLast]}
           onPress={item.onPress}
+          accessibilityRole="button"
+          accessibilityLabel={item.label}
         >
           <View style={[styles.menuIcon, { backgroundColor: item.color + '15' }]}>
             <Ionicons name={item.icon as any} size={20} color={item.color} />

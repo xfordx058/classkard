@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TextInput,
   FlatList,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -13,6 +14,7 @@ import { useApp } from '../context/AppContext';
 import { searchStudents } from '../db/queries';
 import { COLORS } from '../theme/colors';
 import { Student } from '../types';
+import ErrorView from '../components/ErrorView';
 
 export default function SearchScreen() {
   const { db } = useApp();
@@ -20,12 +22,53 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<(Student & { sectionNames?: string })[]>([]);
   const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function doSearch() {
-    if (!db || !query.trim()) return;
-    setSearched(true);
-    const data = await searchStudents(db, query.trim());
-    setResults(data);
+  const doSearch = useCallback(
+    async (term: string) => {
+      if (!db || !term.trim()) {
+        setResults([]);
+        setSearched(false);
+        return;
+      }
+      setSearched(true);
+      setSearching(true);
+      setError(null);
+      try {
+        const data = await searchStudents(db, term.trim());
+        setResults(data);
+      } catch {
+        setError('Search failed. Please try again.');
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    },
+    [db]
+  );
+
+  function onChangeText(text: string) {
+    setQuery(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      doSearch(text);
+    }, 350);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  function clearSearch() {
+    setQuery('');
+    setResults([]);
+    setSearched(false);
+    setError(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
   }
 
   return (
@@ -37,18 +80,22 @@ export default function SearchScreen() {
           placeholder="Search by name, student number, section..."
           placeholderTextColor={COLORS.textLight}
           value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={doSearch}
+          onChangeText={onChangeText}
+          onSubmitEditing={() => doSearch(query)}
           returnKeyType="search"
           autoFocus
         />
+        {searching && <ActivityIndicator size="small" color={COLORS.primary} />}
         {query.length > 0 && (
-          <TouchableOpacity onPress={() => { setQuery(''); setResults([]); setSearched(false); }}>
+          <TouchableOpacity onPress={clearSearch} accessibilityRole="button" accessibilityLabel="Clear search">
             <Ionicons name="close-circle" size={20} color={COLORS.textLight} />
           </TouchableOpacity>
         )}
       </View>
 
+      {error ? (
+        <ErrorView message={error} onRetry={() => doSearch(query)} />
+      ) : (
       <FlatList
         data={results}
         keyExtractor={(item) => String(item.id)}
@@ -100,6 +147,7 @@ export default function SearchScreen() {
           )
         }
       />
+      )}
     </View>
   );
 }

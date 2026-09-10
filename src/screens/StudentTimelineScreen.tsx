@@ -5,6 +5,7 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
@@ -12,6 +13,8 @@ import { useApp } from '../context/AppContext';
 import { getStudentTimeline, getStudentByUserId } from '../db/queries';
 import { COLORS, CATEGORY_COLORS } from '../theme/colors';
 import StatusBadge from '../components/StatusBadge';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
 import { StudentRecord, RecordCategory } from '../types';
 
 const CATEGORY_LABELS: Record<RecordCategory, string> = {
@@ -39,6 +42,9 @@ export default function StudentTimelineScreen() {
   const [records, setRecords] = useState<StudentRecord[]>([]);
   const [filter, setFilter] = useState<RecordCategory | 'ALL'>('ALL');
   const [studentId, setStudentId] = useState<number | null>(paramStudentId ?? null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -46,19 +52,29 @@ export default function StudentTimelineScreen() {
     }, [studentId, filter])
   );
 
-  async function loadRecords() {
+  async function loadRecords(refresh = false) {
     if (!db || !currentUser) return;
-    let sid = studentId;
-    if (!sid) {
-      const st = await getStudentByUserId(db, currentUser.id);
-      if (!st) return;
-      sid = st.id;
-      setStudentId(sid);
+    refresh ? setRefreshing(true) : setLoading(true);
+    setError(null);
+    try {
+      let sid = studentId;
+      if (!sid) {
+        const st = await getStudentByUserId(db, currentUser.id);
+        if (!st) return;
+        sid = st.id;
+        setStudentId(sid);
+      }
+      const data = await getStudentTimeline(db, sid, {
+        category: filter === 'ALL' ? undefined : filter,
+      });
+      setRecords(data);
+    } catch {
+      setError('Could not load your records.');
+      setRecords([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    const data = await getStudentTimeline(db, sid, {
-      category: filter === 'ALL' ? undefined : filter,
-    });
-    setRecords(data);
   }
 
   function renderRecord({ item }: { item: StudentRecord }) {
@@ -121,6 +137,9 @@ export default function StudentTimelineScreen() {
             <TouchableOpacity
               style={[styles.filterChip, filter === item.key && styles.filterChipActive]}
               onPress={() => setFilter(item.key)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter by ${item.label}`}
+              accessibilityState={{ selected: filter === item.key }}
             >
               <Text
                 style={[styles.filterText, filter === item.key && styles.filterTextActive]}
@@ -132,18 +151,29 @@ export default function StudentTimelineScreen() {
         />
       </View>
 
-      <FlatList
-        data={records}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderRecord}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="time-outline" size={40} color={COLORS.textLight} />
-            <Text style={styles.emptyText}>No records found</Text>
-          </View>
-        }
-      />
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonList rows={5} height={92} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={() => { setLoading(true); loadRecords(); }} />
+      ) : (
+        <FlatList
+          data={records}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderRecord}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => loadRecords(true)} tintColor={COLORS.primary} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="time-outline" size={40} color={COLORS.textLight} />
+              <Text style={styles.emptyText}>No records found</Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }

@@ -6,6 +6,8 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
@@ -18,13 +20,22 @@ import {
 } from '../db/queries';
 import { COLORS } from '../theme/colors';
 import { Enrollment } from '../types';
+import { useToast } from '../components/Toast';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
 
 export default function EnrollmentRequestsScreen() {
   const { db } = useApp();
   const route = useRoute<any>();
   const { sectionId } = route.params;
+  const { toast } = useToast();
 
   const [requests, setRequests] = useState<Enrollment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [approvingAll, setApprovingAll] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -32,35 +43,53 @@ export default function EnrollmentRequestsScreen() {
     }, [sectionId])
   );
 
-  async function loadRequests() {
+  async function loadRequests(refresh = false) {
     if (!db) return;
-    const data = await getEnrollmentRequests(db, sectionId);
-    setRequests(data);
+    refresh ? setRefreshing(true) : setLoading(true);
+    setError(null);
+    try {
+      const data = await getEnrollmentRequests(db, sectionId);
+      setRequests(data);
+    } catch {
+      setError('Could not load enrollment requests.');
+      setRequests([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }
 
   async function handleApprove(id: number) {
-    if (!db) return;
+    if (!db || busyId !== null) return;
+    setBusyId(id);
     try {
-      await approveEnrollment(db, id);
+      await approveEnrollment(db, id, sectionId);
       await loadRequests();
+      toast('success', 'Enrollment approved');
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Failed to approve.');
+      toast('error', e?.message ?? 'Failed to approve.');
+    } finally {
+      setBusyId(null);
     }
   }
 
   async function handleReject(id: number) {
-    if (!db) return;
+    if (!db || busyId !== null) return;
     Alert.alert('Reject', 'Remove this enrollment request?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Reject',
         style: 'destructive',
         onPress: async () => {
+          setBusyId(id);
           try {
-            await rejectEnrollment(db, id);
+            await rejectEnrollment(db, id, sectionId);
             await loadRequests();
+            toast('info', 'Enrollment request removed');
           } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'Failed to reject.');
+            toast('error', e?.message ?? 'Failed to reject.');
+          } finally {
+            setBusyId(null);
           }
         },
       },
@@ -68,17 +97,21 @@ export default function EnrollmentRequestsScreen() {
   }
 
   async function handleApproveAll() {
-    if (!db) return;
+    if (!db || approvingAll) return;
     Alert.alert('Approve All', `Approve ${requests.length} pending requests?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Approve All',
         onPress: async () => {
+          setApprovingAll(true);
           try {
             await approveAllEnrollments(db, sectionId);
             await loadRequests();
+            toast('success', 'All requests approved');
           } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'Failed.');
+            toast('error', e?.message ?? 'Failed.');
+          } finally {
+            setApprovingAll(false);
           }
         },
       },
@@ -87,13 +120,31 @@ export default function EnrollmentRequestsScreen() {
 
   return (
     <View style={styles.container}>
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonList rows={5} height={72} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={() => loadRequests()} />
+      ) : (
+        <>
       {requests.length > 0 && (
         <View style={styles.topBar}>
           <Text style={styles.countText}>
             {requests.length} pending request{requests.length !== 1 ? 's' : ''}
           </Text>
-          <TouchableOpacity style={styles.approveAllBtn} onPress={handleApproveAll}>
-            <Ionicons name="checkmark-done" size={16} color={COLORS.white} />
+          <TouchableOpacity
+            style={styles.approveAllBtn}
+            onPress={handleApproveAll}
+            disabled={approvingAll}
+            accessibilityRole="button"
+            accessibilityLabel="Approve all requests"
+          >
+            {approvingAll ? (
+              <ActivityIndicator color={COLORS.white} size="small" />
+            ) : (
+              <Ionicons name="checkmark-done" size={16} color={COLORS.white} />
+            )}
             <Text style={styles.approveAllText}>Approve All</Text>
           </TouchableOpacity>
         </View>
@@ -103,6 +154,9 @@ export default function EnrollmentRequestsScreen() {
         data={requests}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => loadRequests(true)} tintColor={COLORS.primary} />
+        }
         renderItem={({ item }) => (
           <View style={styles.requestCard}>
             <View style={styles.avatar}>
@@ -116,14 +170,28 @@ export default function EnrollmentRequestsScreen() {
               <TouchableOpacity
                 style={styles.approveBtn}
                 onPress={() => handleApprove(item.id)}
+                disabled={busyId !== null}
+                accessibilityRole="button"
+                accessibilityLabel={`Approve ${item.studentName}`}
               >
-                <Ionicons name="checkmark" size={18} color={COLORS.white} />
+                {busyId === item.id ? (
+                  <ActivityIndicator color={COLORS.white} size="small" />
+                ) : (
+                  <Ionicons name="checkmark" size={18} color={COLORS.white} />
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.rejectBtn}
                 onPress={() => handleReject(item.id)}
+                disabled={busyId !== null}
+                accessibilityRole="button"
+                accessibilityLabel={`Reject ${item.studentName}`}
               >
-                <Ionicons name="close" size={18} color={COLORS.white} />
+                {busyId === item.id ? (
+                  <ActivityIndicator color={COLORS.white} size="small" />
+                ) : (
+                  <Ionicons name="close" size={18} color={COLORS.white} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -135,6 +203,8 @@ export default function EnrollmentRequestsScreen() {
           </View>
         }
       />
+        </>
+      )}
     </View>
   );
 }

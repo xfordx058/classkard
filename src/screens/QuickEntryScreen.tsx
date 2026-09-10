@@ -26,6 +26,9 @@ import {
   ATTENDANCE_OPTIONS,
 } from '../types';
 import { createBulkRecords } from '../db/queries';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
+import { useToast } from '../components/Toast';
 
 type Step = 'section' | 'category' | 'details' | 'entry' | 'review';
 
@@ -33,6 +36,7 @@ export default function QuickEntryScreen() {
   const { db, currentUser } = useApp();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { toast } = useToast();
   const preselectedSectionId = route.params?.sectionId;
 
   const [step, setStep] = useState<Step>(preselectedSectionId ? 'category' : 'section');
@@ -44,6 +48,8 @@ export default function QuickEntryScreen() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [entries, setEntries] = useState<Record<number, any>>({});
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const categories: { key: RecordCategory; label: string; icon: string; color: string }[] = [
     { key: 'ATTENDANCE', label: 'Attendance', icon: 'calendar-check', color: COLORS.attendance },
@@ -61,20 +67,29 @@ export default function QuickEntryScreen() {
 
   async function loadData() {
     if (!db || !currentUser) return;
-    const secs = await getSectionsByTeacher(db, currentUser.id);
-    setSections(secs);
-    if (preselectedSectionId) {
-      const sec = secs.find((s) => s.id === preselectedSectionId);
-      if (sec) {
-        setSelectedSection(sec);
-        const studs = await getStudentsBySection(db, preselectedSectionId);
-        setStudents(studs);
-        const init: Record<number, any> = {};
-        studs.forEach((s) => {
-          init[s.id] = category === 'ATTENDANCE' ? 'Present' : '';
-        });
-        setEntries(init);
+    setLoading(true);
+    setError(null);
+    try {
+      const secs = await getSectionsByTeacher(db, currentUser.id);
+      setSections(secs);
+      if (preselectedSectionId) {
+        const sec = secs.find((s) => s.id === preselectedSectionId);
+        if (sec) {
+          setSelectedSection(sec);
+          const studs = await getStudentsBySection(db, preselectedSectionId);
+          setStudents(studs);
+          const init: Record<number, any> = {};
+          studs.forEach((s) => {
+            init[s.id] = category === 'ATTENDANCE' ? 'Present' : '';
+          });
+          setEntries(init);
+        }
       }
+    } catch {
+      setError('Could not load sections.');
+      setSections([]);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -153,8 +168,9 @@ export default function QuickEntryScreen() {
         `${records.length} records ${status === 'ready_to_sign' ? 'saved and ready to sign' : 'saved as draft'}.`,
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
+      toast('success', `${records.length} records saved`);
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Failed to save records.');
+      toast('error', e.message ?? 'Failed to save records.');
     } finally {
       setSaving(false);
     }
@@ -202,7 +218,14 @@ export default function QuickEntryScreen() {
       <View style={styles.container}>
         {renderStepIndicator()}
         <Text style={styles.stepTitle}>Select a Section</Text>
-        <FlatList
+        {loading ? (
+          <View style={styles.list}>
+            <SkeletonList rows={5} height={72} />
+          </View>
+        ) : error ? (
+          <ErrorView message={error} onRetry={() => { setLoading(true); loadData(); }} />
+        ) : (
+          <FlatList
           data={sections}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
@@ -225,6 +248,7 @@ export default function QuickEntryScreen() {
             </TouchableOpacity>
           )}
         />
+        )}
       </View>
     );
   }
@@ -240,6 +264,8 @@ export default function QuickEntryScreen() {
               key={cat.key}
               style={[styles.categoryCard, { borderColor: cat.color }]}
               onPress={() => selectCategory(cat.key)}
+              accessibilityRole="button"
+              accessibilityLabel={`Select ${cat.label}`}
             >
               <View style={[styles.categoryIcon, { backgroundColor: cat.color + '20' }]}>
                 <Ionicons name={cat.icon as any} size={28} color={cat.color} />
@@ -296,7 +322,7 @@ export default function QuickEntryScreen() {
           {category} - {students.length} students
         </Text>
         {category === 'ATTENDANCE' && (
-          <TouchableOpacity style={styles.markAllBtn} onPress={markAllPresent}>
+          <TouchableOpacity style={styles.markAllBtn} onPress={markAllPresent} accessibilityRole="button" accessibilityLabel="Mark all students present">
             <Ionicons name="checkmark-done" size={16} color={COLORS.success} />
             <Text style={styles.markAllText}>Mark All Present</Text>
           </TouchableOpacity>
@@ -333,6 +359,9 @@ export default function QuickEntryScreen() {
                         opt === 'Excused' && { backgroundColor: COLORS.info },
                     ]}
                     onPress={() => updateEntry(item.id, opt)}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${item.lastName}, ${item.firstName}: ${opt}`}
+                    accessibilityState={{ selected: entries[item.id] === opt }}
                   >
                     <Text
                       style={[

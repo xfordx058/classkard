@@ -17,15 +17,22 @@ import { useApp } from '../context/AppContext';
 import { getAcademicYears, createAcademicYear, updateAcademicYearStatus, deleteAcademicYear } from '../db/queries';
 import { COLORS } from '../theme/colors';
 import { AcademicYear } from '../types';
+import { SkeletonList } from '../components/Skeleton';
+import ErrorView from '../components/ErrorView';
+import Fab from '../components/Fab';
+import { useToast } from '../components/Toast';
 
 export default function ManageAcademicYearsScreen() {
   const { db } = useApp();
+  const { toast } = useToast();
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -35,14 +42,23 @@ export default function ManageAcademicYearsScreen() {
 
   async function loadYears() {
     if (!db) return;
-    const data = await getAcademicYears(db);
-    setYears(data);
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getAcademicYears(db);
+      setYears(data);
+    } catch {
+      setError('Could not load academic years.');
+      setYears([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleCreate() {
     if (!db) return;
     if (!name.trim() || !startDate.trim() || !endDate.trim()) {
-      Alert.alert('Error', 'Please fill in all fields.');
+      toast('warning', 'Please fill in all fields.');
       return;
     }
     setSaving(true);
@@ -52,9 +68,10 @@ export default function ManageAcademicYearsScreen() {
       setName('');
       setStartDate('');
       setEndDate('');
+      toast('success', 'Academic year created');
       await loadYears();
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Failed to create academic year.');
+      toast('error', e.message ?? 'Failed to create academic year.');
     } finally {
       setSaving(false);
     }
@@ -65,9 +82,10 @@ export default function ManageAcademicYearsScreen() {
     const newStatus = year.status === 'active' ? 'inactive' : 'active';
     try {
       await updateAcademicYearStatus(db, year.id, newStatus);
+      toast('info', `Year marked ${newStatus}`);
       await loadYears();
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Failed to update.');
+      toast('error', e.message ?? 'Failed to update.');
     }
   }
 
@@ -81,9 +99,10 @@ export default function ManageAcademicYearsScreen() {
         onPress: async () => {
           try {
             await deleteAcademicYear(db, year.id);
+            toast('info', 'Academic year deleted');
             await loadYears();
           } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'Failed to delete.');
+            toast('error', e.message ?? 'Failed to delete.');
           }
         },
       },
@@ -92,44 +111,56 @@ export default function ManageAcademicYearsScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={years}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <View style={styles.yearCard}>
-            <View style={styles.yearInfo}>
-              <Text style={styles.yearName}>{item.name}</Text>
-              <Text style={styles.yearDates}>
-                {item.startDate} to {item.endDate}
-              </Text>
-            </View>
-            <View style={styles.yearActions}>
-              <TouchableOpacity
-                style={[styles.statusBadge, item.status === 'active' ? styles.activeBadge : styles.inactiveBadge]}
-                onPress={() => toggleStatus(item)}
-              >
-                <Text style={[styles.statusText, item.status === 'active' ? styles.activeText : styles.inactiveText]}>
-                  {item.status.toUpperCase()}
+      {loading ? (
+        <View style={styles.list}>
+          <SkeletonList rows={5} height={72} />
+        </View>
+      ) : error ? (
+        <ErrorView message={error} onRetry={loadYears} />
+      ) : (
+        <FlatList
+          data={years}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <View style={styles.yearCard}>
+              <View style={styles.yearInfo}>
+                <Text style={styles.yearName}>{item.name}</Text>
+                <Text style={styles.yearDates}>
+                  {item.startDate} to {item.endDate}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDelete(item)}>
-                <Ionicons name="trash-outline" size={18} color={COLORS.error} />
-              </TouchableOpacity>
+              </View>
+              <View style={styles.yearActions}>
+                <TouchableOpacity
+                  style={[styles.statusBadge, item.status === 'active' ? styles.activeBadge : styles.inactiveBadge]}
+                  onPress={() => toggleStatus(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Mark ${item.name} ${item.status === 'active' ? 'inactive' : 'active'}`}
+                >
+                  <Text style={[styles.statusText, item.status === 'active' ? styles.activeText : styles.inactiveText]}>
+                    {item.status.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleDelete(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete ${item.name}`}
+                >
+                  <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="calendar-outline" size={40} color={COLORS.textLight} />
-            <Text style={styles.emptyText}>No academic years</Text>
-          </View>
-        }
-      />
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="calendar-outline" size={40} color={COLORS.textLight} />
+              <Text style={styles.emptyText}>No academic years</Text>
+            </View>
+          }
+        />
+      )}
 
-      <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
-        <Ionicons name="add" size={28} color={COLORS.white} />
-      </TouchableOpacity>
+      <Fab onPress={() => setModalVisible(true)} label="Add academic year" />
 
       <Modal visible={modalVisible} animationType="slide" transparent>
         <KeyboardAvoidingView
@@ -260,18 +291,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textSecondary,
     marginTop: 12,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 6,
   },
   modalOverlay: {
     flex: 1,

@@ -52,6 +52,37 @@ async function bust(...keys: string[]) {
   await invalidateCache(...keys);
 }
 
+// Online-first reads: try the network, refresh the local cache, and only fall
+// back to a cached copy when the network request fails (i.e. offline). This
+// keeps cross-device changes (enrollments, approvals, signatures) from hiding
+// behind a 24h stale cache while still working offline.
+// In-flight map dedupes concurrent reads of the same cache key so parallel
+// screens (e.g. two tabs firing on focus) only make one network request.
+const inFlight = new Map<string, Promise<unknown>>();
+
+async function fresh<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
+  const pending = inFlight.get(key) as Promise<T> | undefined;
+  if (pending) return pending;
+
+  const run = (async () => {
+    try {
+      const value = await fetchFn();
+      await writeCached(key, value);
+      return value;
+    } catch (err) {
+      const cached = await readCached<T>(key);
+      if (cached !== null) return cached;
+      throw err;
+    }
+  })();
+  inFlight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Auth + Users
 // ---------------------------------------------------------------------------
@@ -80,11 +111,7 @@ export const getUserById = async (
   id: number
 ): Promise<User | null> => {
   const key = cacheKey('user', id);
-  const cached = await readCached<User | null>(key);
-  if (cached !== null) return cached;
-  const u = await Online.getUserById(db, id);
-  if (u) await writeCached(key, u);
-  return u;
+  return fresh(key, () => Online.getUserById(db, id));
 };
 
 export async function updateUser(
@@ -100,23 +127,15 @@ export async function updateUser(
 // Academic Years
 // ---------------------------------------------------------------------------
 export async function getAcademicYears(db: Db): Promise<AcademicYear[]> {
-  const key = cacheKey('academicYears');
-  const cached = await readCached<AcademicYear[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getAcademicYears(db);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(cacheKey('academicYears'), () => Online.getAcademicYears(db));
 }
 
 export async function getActiveAcademicYear(
   db: Db
 ): Promise<AcademicYear | null> {
-  const key = cacheKey('activeAcademicYear');
-  const cached = await readCached<AcademicYear | null>(key);
-  if (cached !== null) return cached;
-  const row = await Online.getActiveAcademicYear(db);
-  if (row) await writeCached(key, row);
-  return row;
+  return fresh(cacheKey('activeAcademicYear'), () =>
+    Online.getActiveAcademicYear(db)
+  );
 }
 
 export async function createAcademicYear(
@@ -148,21 +167,11 @@ export async function deleteAcademicYear(db: Db, id: number): Promise<void> {
 // Subjects
 // ---------------------------------------------------------------------------
 export async function getSubjects(db: Db): Promise<Subject[]> {
-  const key = cacheKey('subjects');
-  const cached = await readCached<Subject[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getSubjects(db);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(cacheKey('subjects'), () => Online.getSubjects(db));
 }
 
 export async function getSubjectById(db: Db, id: number): Promise<Subject | null> {
-  const key = cacheKey('subject', id);
-  const cached = await readCached<Subject | null>(key);
-  if (cached !== null) return cached;
-  const s = await Online.getSubjectById(db, id);
-  if (s) await writeCached(key, s);
-  return s;
+  return fresh(cacheKey('subject', id), () => Online.getSubjectById(db, id));
 }
 
 export async function createSubject(
@@ -200,21 +209,16 @@ export async function getSectionsByTeacher(
   teacherId: number,
   academicYearId?: number
 ): Promise<Section[]> {
-  const key = cacheKey('sectionsByTeacher', teacherId, academicYearId ?? '');
-  const cached = await readCached<Section[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getSectionsByTeacher(db, teacherId, academicYearId);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(
+    cacheKey('sectionsByTeacher', teacherId, academicYearId ?? ''),
+    () => Online.getSectionsByTeacher(db, teacherId, academicYearId)
+  );
 }
 
 export async function getSectionById(db: Db, sectionId: number): Promise<Section | null> {
-  const key = cacheKey('section', sectionId);
-  const cached = await readCached<Section | null>(key);
-  if (cached !== null) return cached;
-  const s = await Online.getSectionById(db, sectionId);
-  if (s) await writeCached(key, s);
-  return s;
+  return fresh(cacheKey('section', sectionId), () =>
+    Online.getSectionById(db, sectionId)
+  );
 }
 
 export async function createSection(
@@ -225,7 +229,11 @@ export async function createSection(
   name: string
 ): Promise<Section> {
   const s = await Online.createSection(db, academicYearId, subjectId, teacherId, name);
-  await bust(cacheKey('sectionsByTeacher', teacherId), cacheKey('section'));
+  await bust(
+    cacheKey('sectionsByTeacher', teacherId),
+    cacheKey('sectionsByTeacher', teacherId, academicYearId),
+    cacheKey('section')
+  );
   return s;
 }
 
@@ -233,30 +241,21 @@ export async function createSection(
 // Students
 // ---------------------------------------------------------------------------
 export async function getStudentsBySection(db: Db, sectionId: number): Promise<Student[]> {
-  const key = cacheKey('studentsBySection', sectionId);
-  const cached = await readCached<Student[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getStudentsBySection(db, sectionId);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(cacheKey('studentsBySection', sectionId), () =>
+    Online.getStudentsBySection(db, sectionId)
+  );
 }
 
 export async function getStudentById(db: Db, studentId: number): Promise<Student | null> {
-  const key = cacheKey('student', studentId);
-  const cached = await readCached<Student | null>(key);
-  if (cached !== null) return cached;
-  const s = await Online.getStudentById(db, studentId);
-  if (s) await writeCached(key, s);
-  return s;
+  return fresh(cacheKey('student', studentId), () =>
+    Online.getStudentById(db, studentId)
+  );
 }
 
 export async function getStudentByUserId(db: Db, userId: number): Promise<Student | null> {
-  const key = cacheKey('studentByUserId', userId);
-  const cached = await readCached<Student | null>(key);
-  if (cached !== null) return cached;
-  const s = await Online.getStudentByUserId(db, userId);
-  if (s) await writeCached(key, s);
-  return s;
+  return fresh(cacheKey('studentByUserId', userId), () =>
+    Online.getStudentByUserId(db, userId)
+  );
 }
 
 export async function createStudent(
@@ -297,21 +296,33 @@ export async function enrollStudent(
 
 export async function getEnrollmentRequests(db: Db, sectionId: number): Promise<Enrollment[]> {
   const key = cacheKey('enrollmentRequests', sectionId);
-  const cached = await readCached<Enrollment[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getEnrollmentRequests(db, sectionId);
-  await writeCached(key, rows);
-  return rows;
+  try {
+    const rows = await Online.getEnrollmentRequests(db, sectionId);
+    await writeCached(key, rows);
+    return rows;
+  } catch {
+    const cached = await readCached<Enrollment[]>(key);
+    if (cached !== null) return cached;
+    throw new Error('Offline: no cached enrollment requests');
+  }
 }
 
-export async function approveEnrollment(db: Db, enrollmentId: number): Promise<void> {
+export async function approveEnrollment(
+  db: Db,
+  enrollmentId: number,
+  sectionId: number
+): Promise<void> {
   await Online.approveEnrollment(db, enrollmentId);
-  await bust(cacheKey('enrollmentRequests'));
+  await bust(cacheKey('enrollmentRequests', sectionId), cacheKey('studentsBySection', sectionId));
 }
 
-export async function rejectEnrollment(db: Db, enrollmentId: number): Promise<void> {
+export async function rejectEnrollment(
+  db: Db,
+  enrollmentId: number,
+  sectionId: number
+): Promise<void> {
   await Online.rejectEnrollment(db, enrollmentId);
-  await bust(cacheKey('enrollmentRequests'));
+  await bust(cacheKey('enrollmentRequests', sectionId), cacheKey('studentsBySection', sectionId));
 }
 
 export async function approveAllEnrollments(db: Db, sectionId: number): Promise<void> {
@@ -320,24 +331,18 @@ export async function approveAllEnrollments(db: Db, sectionId: number): Promise<
 }
 
 export async function getStudentSections(db: Db, studentId: number): Promise<Section[]> {
-  const key = cacheKey('studentSections', studentId);
-  const cached = await readCached<Section[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getStudentSections(db, studentId);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(cacheKey('studentSections', studentId), () =>
+    Online.getStudentSections(db, studentId)
+  );
 }
 
 export async function getStudentEnrollments(
   db: Db,
   studentId: number
 ): Promise<(Enrollment & { sectionName: string; subjectName: string; subjectCode: string })[]> {
-  const key = cacheKey('studentEnrollments', studentId);
-  const cached = await readCached<(Enrollment & { sectionName: string; subjectName: string; subjectCode: string })[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getStudentEnrollments(db, studentId);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(cacheKey('studentEnrollments', studentId), () =>
+    Online.getStudentEnrollments(db, studentId)
+  );
 }
 
 export async function joinSectionByClassCode(
@@ -379,12 +384,9 @@ export async function getRecordsBySection(
   sectionId: number,
   category?: RecordCategory
 ): Promise<StudentRecord[]> {
-  const key = cacheKey('recordsBySection', sectionId, category ?? '');
-  const cached = await readCached<StudentRecord[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getRecordsBySection(db, sectionId, category);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(cacheKey('recordsBySection', sectionId, category ?? ''), () =>
+    Online.getRecordsBySection(db, sectionId, category)
+  );
 }
 
 export async function getRecordsByStudentAndSection(
@@ -392,21 +394,15 @@ export async function getRecordsByStudentAndSection(
   studentId: number,
   sectionId: number
 ): Promise<StudentRecord[]> {
-  const key = cacheKey('recordsByStudentSection', studentId, sectionId);
-  const cached = await readCached<StudentRecord[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getRecordsByStudentAndSection(db, studentId, sectionId);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(cacheKey('recordsByStudentSection', studentId, sectionId), () =>
+    Online.getRecordsByStudentAndSection(db, studentId, sectionId)
+  );
 }
 
 export async function getRecordById(db: Db, recordId: number): Promise<StudentRecord | null> {
-  const key = cacheKey('record', recordId);
-  const cached = await readCached<StudentRecord | null>(key);
-  if (cached !== null) return cached;
-  const r = await Online.getRecordById(db, recordId);
-  if (r) await writeCached(key, r);
-  return r;
+  return fresh(cacheKey('record', recordId), () =>
+    Online.getRecordById(db, recordId)
+  );
 }
 
 export async function updateRecord(
@@ -442,12 +438,9 @@ export async function getUnsignedRecords(
   db: Db,
   teacherId: number
 ): Promise<(StudentRecord & { studentName: string; sectionName: string })[]> {
-  const key = cacheKey('unsignedRecords', teacherId);
-  const cached = await readCached<(StudentRecord & { studentName: string; sectionName: string })[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getUnsignedRecords(db, teacherId);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(cacheKey('unsignedRecords', teacherId), () =>
+    Online.getUnsignedRecords(db, teacherId)
+  );
 }
 
 export async function getStudentTimeline(
@@ -455,12 +448,10 @@ export async function getStudentTimeline(
   studentId: number,
   filters?: { category?: RecordCategory; startDate?: string; endDate?: string }
 ): Promise<StudentRecord[]> {
-  const key = cacheKey('studentTimeline', studentId, filters ? hash(filters) : '');
-  const cached = await readCached<StudentRecord[]>(key);
-  if (cached !== null) return cached;
-  const rows = await Online.getStudentTimeline(db, studentId, filters);
-  await writeCached(key, rows);
-  return rows;
+  return fresh(
+    cacheKey('studentTimeline', studentId, filters ? hash(filters) : ''),
+    () => Online.getStudentTimeline(db, studentId, filters)
+  );
 }
 
 // ---------------------------------------------------------------------------
