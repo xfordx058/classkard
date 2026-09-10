@@ -26,8 +26,9 @@ export default function SignatureScreen() {
   const signatureRef = useRef<SignatureViewRef>(null);
 
   const [record, setRecord] = useState<StudentRecord | null>(null);
-  const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [signing, setSigning] = useState(false);
+  const signAttemptedRef = useRef(false);
   const [hasSignature, setHasSignature] = useState(false);
   const [signedImage, setSignedImage] = useState<string | null>(null);
 
@@ -52,7 +53,7 @@ export default function SignatureScreen() {
 
   async function handleConfirm(sigBase64: string) {
     if (!db || !currentUser || !record) return;
-    setLoading(true);
+    setSigning(true);
     try {
       await signRecord(db, record.id, currentUser.id, sigBase64);
       await updateUser(db, currentUser.id, { signatureData: sigBase64 });
@@ -73,7 +74,25 @@ export default function SignatureScreen() {
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Failed to sign record.');
     } finally {
-      setLoading(false);
+      setSigning(false);
+    }
+  }
+
+  function handleSignPressed() {
+    if (!db || !currentUser || !record) return;
+    if (signing) return;
+    signAttemptedRef.current = true;
+    signatureRef.current?.readSignature();
+  }
+
+  function handlePadEmpty() {
+    setHasSignature(false);
+    if (signAttemptedRef.current) {
+      signAttemptedRef.current = false;
+      Alert.alert(
+        'Signature required',
+        'Draw your signature in the box first, then tap Sign.'
+      );
     }
   }
 
@@ -217,17 +236,31 @@ export default function SignatureScreen() {
             <SignatureScreenComp
               ref={signatureRef}
               onOK={handleConfirm}
-              onEmpty={() => setHasSignature(false)}
+              onEmpty={handlePadEmpty}
               onBegin={() => setHasSignature(true)}
               onClear={() => setHasSignature(false)}
               dataURL={currentUser?.signatureData && String(currentUser.signatureData).startsWith('data:image') ? String(currentUser.signatureData) : undefined}
-              clearText="Clear"
-              confirmText="Sign"
               trimWhitespace
               imageType="image/png"
               webStyle={signatureWebStyle}
             />
           </View>
+          <TouchableOpacity
+            style={[styles.signButton, signing && styles.signButtonDisabled]}
+            onPress={handleSignPressed}
+            disabled={signing}
+            accessibilityRole="button"
+            accessibilityLabel="Sign and save this record"
+          >
+            {signing ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={18} color={COLORS.white} />
+                <Text style={styles.signButtonText}>Sign & Save</Text>
+              </>
+            )}
+          </TouchableOpacity>
           <TouchableOpacity style={styles.clearButton} onPress={handleClear}>
             <Ionicons name="refresh" size={16} color={COLORS.textSecondary} />
             <Text style={styles.clearButtonText}>Clear & Start Over</Text>
@@ -239,15 +272,21 @@ export default function SignatureScreen() {
 }
 
 const signatureWebStyle = `
-  .m-signature-pad { border: 2px dashed #cfd8d3; border-radius: 14px; background: #ffffff; }
-  .m-signature-pad--body { border: none; }
-  .m-signature-pad--footer { padding-top: 8px; }
-  .m-signature-pad--footer .description { display: none; }
-  .m-signature-pad--footer .button {
-    background: #22C55E; color: #ffffff; border-radius: 8px;
-    font-weight: 700; font-size: 14px;
+  .m-signature-pad {
+    display: flex;
+    flex-direction: column;
+    border: 2px dashed #cfd8d3;
+    border-radius: 14px;
+    background: #ffffff;
   }
-  .m-signature-pad--footer .button.clear { background: #f1f5f3; color: #475569; }
+  .m-signature-pad--body {
+    flex: 1;
+    height: auto;
+    border: none;
+  }
+  .m-signature-pad--footer {
+    display: none;
+  }
 `;
 
 const styles = StyleSheet.create({
@@ -362,6 +401,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     gap: 6,
+  },
+  signButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.success,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 6,
+    marginBottom: 8,
+  },
+  signButtonDisabled: {
+    opacity: 0.6,
+  },
+  signButtonText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
   },
   clearButtonText: {
     fontSize: 14,
