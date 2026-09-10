@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    paddingTop: 80,
+    paddingTop: 24,
   },
   sectionSelector: {
     marginBottom: 20,

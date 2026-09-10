@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingTop: 80,
+    paddingTop: 24,
   },
   emptyText: {
     fontSize: 18,

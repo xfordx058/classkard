@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingTop: 60,
+    paddingTop: 24,
   },
   emptyText: {
     fontSize: 16,

@@ -1,5 +1,6 @@
 import React, { useCallback, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { BlurView, BlurTargetView } from 'expo-blur';
@@ -71,12 +72,35 @@ const glassTabBarStyle = {
   shadowRadius: 20,
 } as const;
 
+const screenTop = 56;
+
 const withBack = (C: React.ComponentType<any>) => (props: any) => (
   <View style={glassStyles.fill}>
-    <C {...props} />
+    <SafeAreaView edges={['top']} style={glassStyles.fill}>
+      <View style={{ flex: 1, paddingTop: screenTop }}>
+        <C {...props} />
+      </View>
+    </SafeAreaView>
     <FloatingBackButton />
   </View>
 );
+
+const withSafeArea = (C: React.ComponentType<any>) => (props: any) => (
+  <SafeAreaView edges={['top']} style={glassStyles.fill}>
+    <C {...props} />
+  </SafeAreaView>
+);
+
+const LoginW = withSafeArea(LoginScreen);
+const RegisterW = withSafeArea(RegisterScreen);
+const DashboardW = withSafeArea(DashboardScreen);
+const ClassesListW = withSafeArea(ClassesListScreen);
+const QuickEntrySafeW = withSafeArea(QuickEntryScreen);
+const SearchSafeW = withSafeArea(SearchScreen);
+const SettingsW = withSafeArea(SettingsScreen);
+const StudentDashboardW = withSafeArea(StudentDashboardScreen);
+const StudentProfileSafeW = withSafeArea(StudentProfileScreen);
+const StudentTimelineSafeW = withSafeArea(StudentTimelineScreen);
 
 const UnsignedRecordsW = withBack(UnsignedRecordsScreen);
 const QuickEntryW = withBack(QuickEntryScreen);
@@ -105,8 +129,8 @@ const screenOptions = {
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="Login" component={LoginW} />
+      <Stack.Screen name="Register" component={RegisterW} />
     </Stack.Navigator>
   );
 }
@@ -114,7 +138,7 @@ function AuthStack() {
 function DashboardTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Dashboard' }} />
+      <Stack.Screen name="Dashboard" component={DashboardW} options={{ title: 'Dashboard' }} />
     </Stack.Navigator>
   );
 }
@@ -122,7 +146,7 @@ function DashboardTab() {
 function ClassesTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="ClassesList" component={ClassesListScreen} options={{ title: 'Classes' }} />
+      <Stack.Screen name="ClassesList" component={ClassesListW} options={{ title: 'Classes' }} />
     </Stack.Navigator>
   );
 }
@@ -130,7 +154,7 @@ function ClassesTab() {
 function QuickEntryTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="QuickEntry" component={QuickEntryScreen} options={{ title: 'Quick Entry' }} />
+      <Stack.Screen name="QuickEntry" component={QuickEntrySafeW} options={{ title: 'Quick Entry' }} />
     </Stack.Navigator>
   );
 }
@@ -138,7 +162,7 @@ function QuickEntryTab() {
 function SearchTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Search" component={SearchScreen} options={{ title: 'Search' }} />
+      <Stack.Screen name="Search" component={SearchSafeW} options={{ title: 'Search' }} />
     </Stack.Navigator>
   );
 }
@@ -146,7 +170,7 @@ function SearchTab() {
 function TeacherSettingsTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+      <Stack.Screen name="Settings" component={SettingsW} options={{ title: 'Settings' }} />
     </Stack.Navigator>
   );
 }
@@ -243,7 +267,7 @@ function TeacherRoot() {
 function HomeTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="StudentDashboard" component={StudentDashboardScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="StudentDashboard" component={StudentDashboardW} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -251,7 +275,7 @@ function HomeTab() {
 function MyCardsTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="StudentProfile" component={StudentProfileScreen} options={{ title: 'My Cards' }} />
+      <Stack.Screen name="StudentProfile" component={StudentProfileSafeW} options={{ title: 'My Cards' }} />
     </Stack.Navigator>
   );
 }
@@ -259,7 +283,7 @@ function MyCardsTab() {
 function TimelineTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="StudentTimeline" component={StudentTimelineScreen} options={{ title: 'Timeline' }} />
+      <Stack.Screen name="StudentTimeline" component={StudentTimelineSafeW} options={{ title: 'Timeline' }} />
     </Stack.Navigator>
   );
 }
@@ -267,7 +291,7 @@ function TimelineTab() {
 function StudentSettingsTab() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+      <Stack.Screen name="Settings" component={SettingsW} options={{ title: 'Settings' }} />
     </Stack.Navigator>
   );
 }

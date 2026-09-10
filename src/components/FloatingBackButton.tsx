@@ -2,14 +2,16 @@ import React from 'react';
 import { StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
 
 export default function FloatingBackButton() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   return (
     <TouchableOpacity
-      style={styles.button}
+      style={[styles.button, { top: insets.top + 12 }]}
       onPress={() => navigation.goBack()}
       accessibilityRole="button"
       accessibilityLabel="Go back"
@@ -23,7 +25,6 @@ export default function FloatingBackButton() {
 const styles = StyleSheet.create({
   button: {
     position: 'absolute',
-    top: 14,
     left: 16,
     zIndex: 50,
     width: 40,
